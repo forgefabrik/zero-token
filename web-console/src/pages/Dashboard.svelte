@@ -92,7 +92,7 @@
           <li><span>2</span><div><strong>Browser-Login abschließen</strong><small>Die Session wird ausschließlich lokal gespeichert.</small></div></li>
           <li><span>3</span><div><strong>Modelle aktualisieren</strong><small>Danach steht der lokale Gateway-Endpunkt bereit.</small></div></li>
         </ol>
-        <button class="command" onclick={() => copy("zt providers list", "providers")}><code>zt providers list</code><span>{copied === "providers" ? "Kopiert" : "Kopieren"}</span></button>
+        <button class="command" onclick={() => copy("nova providers list", "providers")}><code>nova providers list</code><span>{copied === "providers" ? "Kopiert" : "Kopieren"}</span></button>
       </section>
     </div>
 
