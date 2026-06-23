@@ -1,12 +1,13 @@
 {
   "name": "nova-local-ai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Nova – inoffizielles lokales Multi-Provider-AI-Gateway mit optionalem yoyo-evolve Coding-Agent.",
+  "description": "Nova – inoffizielles lokales Multi-Provider-AI-Gateway mit optionalen Agent-Backends.",
   "license": "MIT",
   "bin": {
     "nova": "./dist/index.js",
+    "nova-ga": "./dist/genericagent.js",
     "zt": "./dist/index.js"
   },
   "engines": {
