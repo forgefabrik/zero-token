@@ -35,6 +35,15 @@ async function loadDiscoverer(provider: string) {
  */
 function getDefaultModels(provider: string): ModelInfo[] {
   const defaultModels: Record<string, ModelInfo[]> = {
+    chatgpt: [
+      { id: "gpt-4o", name: "GPT-4o", slug: "gpt-4o", provider: "chatgpt", capabilities: { text: true, vision: true }, enabled: true },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini", slug: "gpt-4o-mini", provider: "chatgpt", capabilities: { text: true, vision: true }, enabled: true },
+      { id: "o3", name: "o3", slug: "o3", provider: "chatgpt", capabilities: { text: true }, enabled: true },
+      { id: "o4-mini", name: "o4-mini", slug: "o4-mini", provider: "chatgpt", capabilities: { text: true }, enabled: true },
+      { id: "gpt-4.1", name: "GPT-4.1", slug: "gpt-4.1", provider: "chatgpt", capabilities: { text: true, vision: true }, enabled: true },
+      { id: "gpt-4.1-mini", name: "GPT-4.1 Mini", slug: "gpt-4.1-mini", provider: "chatgpt", capabilities: { text: true, vision: true }, enabled: true },
+      { id: "gpt-4.1-nano", name: "GPT-4.1 Nano", slug: "gpt-4.1-nano", provider: "chatgpt", capabilities: { text: true, vision: true }, enabled: true },
+    ],
     claude: [
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", slug: "claude-sonnet-4", provider: "claude", capabilities: { text: true, vision: true }, enabled: true },
       { id: "claude-haiku-3", name: "Claude Haiku 3", slug: "claude-haiku-3", provider: "claude", capabilities: { text: true, vision: true }, enabled: true },
@@ -101,8 +110,6 @@ export async function refreshModels(): Promise<ModelInfo[]> {
 
   if (activeAccounts.length === 0) {
     logger.warn("Keine aktiven Accounts für Modellabfrage gefunden – verwende Defaults");
-    const defaultModels = getDefaultModels("chatgpt");
-    // Use defaults from all known providers
     const allDefaults: ModelInfo[] = [];
     const providers = ["chatgpt", "claude", "gemini", "deepseek", "grok", "perplexity", "qwen", "kimi", "doubao", "glm", "xiaomimo"];
     for (const p of providers) {

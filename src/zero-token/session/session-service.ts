@@ -6,7 +6,7 @@ import logger from "../logger.js";
 /**
  * Lazy-loaded validator cache.
  */
-const validatorCache = new Map<string, SessionValidator>();
+const validatorCache = new Map<string, SessionValidator | null>();
 
 async function loadValidator(provider: string): Promise<SessionValidator | null> {
   if (validatorCache.has(provider)) {
