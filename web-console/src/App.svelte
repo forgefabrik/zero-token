@@ -3,6 +3,7 @@
   import Dashboard from "./pages/Dashboard.svelte";
   import Playground from "./pages/Playground.svelte";
   import Providers from "./pages/Providers.svelte";
+  import Discovery from "./pages/Discovery.svelte";
   import Agent from "./pages/Agent.svelte";
   import Accounts from "./pages/Accounts.svelte";
   import Models from "./pages/Models.svelte";
@@ -14,6 +15,7 @@
     | "playground"
     | "dashboard"
     | "providers"
+    | "discovery"
     | "agent"
     | "accounts"
     | "models"
@@ -24,6 +26,7 @@
     { key: "playground", label: "Playground", icon: "▶", description: "Modelle direkt testen" },
     { key: "dashboard", label: "Übersicht", icon: "◫", description: "Status und Schnellzugriff" },
     { key: "providers", label: "Provider", icon: "✦", description: "Anbieter verbinden" },
+    { key: "discovery", label: "Discovery", icon: "⌕", description: "Neue Provider finden" },
     { key: "agent", label: "Agent", icon: "⌁", description: "Coding-Agent starten" },
     { key: "accounts", label: "Accounts", icon: "◎", description: "Sessions verwalten" },
     { key: "models", label: "Modelle", icon: "◇", description: "Modelle durchsuchen" },
@@ -124,6 +127,8 @@
         <Dashboard />
       {:else if page === "providers"}
         <Providers />
+      {:else if page === "discovery"}
+        <Discovery />
       {:else if page === "agent"}
         <Agent />
       {:else if page === "accounts"}
