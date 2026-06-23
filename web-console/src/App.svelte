@@ -5,6 +5,7 @@
   import Providers from "./pages/Providers.svelte";
   import Discovery from "./pages/Discovery.svelte";
   import Agent from "./pages/Agent.svelte";
+  import GenericAgent from "./pages/GenericAgent.svelte";
   import Accounts from "./pages/Accounts.svelte";
   import Models from "./pages/Models.svelte";
   import Logs from "./pages/Logs.svelte";
@@ -17,6 +18,7 @@
     | "providers"
     | "discovery"
     | "agent"
+    | "genericagent"
     | "accounts"
     | "models"
     | "logs"
@@ -27,7 +29,8 @@
     { key: "dashboard", label: "Übersicht", icon: "◫", description: "Status und Schnellzugriff" },
     { key: "providers", label: "Provider", icon: "✦", description: "Anbieter verbinden" },
     { key: "discovery", label: "Discovery", icon: "⌕", description: "Neue Provider finden" },
-    { key: "agent", label: "Agent", icon: "⌁", description: "Coding-Agent starten" },
+    { key: "agent", label: "yoyo Agent", icon: "⌁", description: "Coding-Agent starten" },
+    { key: "genericagent", label: "GenericAgent", icon: "GA", description: "Externes Agent-Backend" },
     { key: "accounts", label: "Accounts", icon: "◎", description: "Sessions verwalten" },
     { key: "models", label: "Modelle", icon: "◇", description: "Modelle durchsuchen" },
     { key: "logs", label: "Live-Logs", icon: "≋", description: "Ereignisse beobachten" },
@@ -131,6 +134,8 @@
         <Discovery />
       {:else if page === "agent"}
         <Agent />
+      {:else if page === "genericagent"}
+        <GenericAgent />
       {:else if page === "accounts"}
         <Accounts />
       {:else if page === "models"}
@@ -169,7 +174,7 @@
   nav button { display: flex; align-items: center; gap: 0.75rem; width: 100%; padding: 0.72rem; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--muted); text-align: left; cursor: pointer; transition: 0.16s ease; }
   nav button:hover { color: var(--text); background: rgba(255,255,255,0.035); }
   nav button.active { color: var(--text); background: rgba(124, 108, 242, 0.13); border-color: rgba(143, 122, 255, 0.24); }
-  .nav-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px; background: rgba(255,255,255,0.04); font-size: 0.9rem; }
+  .nav-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px; background: rgba(255,255,255,0.04); font-size: 0.8rem; }
   .nav-copy strong, .nav-copy small { display: block; }
   .nav-copy strong { font-size: 0.86rem; }
   .nav-copy small { margin-top: 0.12rem; color: #65748e; font-size: 0.68rem; }
