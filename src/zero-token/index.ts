@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import pino from "pino";
-import type { ProviderType } from "./accounts/account-types.js";
 
 const logger = pino({
   name: "zero-token",
@@ -27,7 +26,7 @@ function printHelp(): void {
   console.error("    zt <command> [options]");
   console.error("");
   console.error("  Befehle:");
-  console.error("    login [--provider=<name>]  Bei einem KI-Provider anmelden");
+  console.error("    login [--provider=<id>]    Bei einem KI-Provider anmelden");
   console.error("    providers list             Verfügbare Provider auflisten");
   console.error("    start                      Gateway starten");
   console.error("    status                     Systemstatus anzeigen");
@@ -44,19 +43,17 @@ function printHelp(): void {
   console.error("    help, --help               Diese Hilfe anzeigen");
   console.error("");
   console.error("  Beispiele:");
-  console.error("    zt login                       ChatGPT-Plus-Login");
-  console.error("    zt login --provider=claude      Claude-Pro-Login");
-  console.error("    zt login --provider=gemini      Gemini-Login");
-  console.error("    zt providers list               Alle verfügbaren Provider");
+  console.error("    zt login --provider=chatgpt-web");
+  console.error("    zt login --provider=claude-web");
+  console.error("    zt login --provider=glm-intl-web");
+  console.error("    zt providers list");
   console.error("");
   console.error("  Weitere Informationen:");
   console.error("    https://github.com/bkgoder/zero-token");
   console.error("");
 }
 
-/**
- * Parses --key=value or --key value style arguments.
- */
+/** Parses --key=value or --key value style arguments. */
 function parseArgs(args: string[]): { command: string[]; flags: Record<string, string> } {
   const flags: Record<string, string> = {};
   const command: string[] = [];
@@ -80,20 +77,6 @@ function parseArgs(args: string[]): { command: string[]; flags: Record<string, s
   return { command, flags };
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  chatgpt: "ChatGPT",
-  claude: "Claude",
-  gemini: "Gemini",
-  deepseek: "DeepSeek",
-  grok: "Grok",
-  perplexity: "Perplexity",
-  qwen: "Qwen",
-  kimi: "Kimi",
-  doubao: "Doubao",
-  glm: "GLM",
-  xiaomimo: "XiaoMiMo",
-};
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -107,18 +90,27 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case "login": {
-      const provider = (flags.provider ?? "chatgpt") as ProviderType;
+      const providerInput = flags.provider ?? "chatgpt-web";
+      const { listProviders, login, resolveProvider } = await import("./providers/registry.js");
+      const provider = resolveProvider(providerInput);
 
-      if (!PROVIDER_LABELS[provider]) {
-        console.error(`  ✗ Unbekannter Provider: ${provider}`);
-        console.error(`    Verfügbare Provider: ${Object.keys(PROVIDER_LABELS).join(", ")}`);
+      if (!provider) {
+        console.error(`  ✗ Unbekannter Provider: ${providerInput}`);
+        console.error(
+          `    Verfügbare Provider: ${listProviders()
+            .map((item) => item.id)
+            .join(", ")}`,
+        );
         process.exit(1);
       }
 
-      console.error(`  Anmelden bei ${PROVIDER_LABELS[provider]} …`);
+      if (provider.authType === "api-key") {
+        console.error(`  ${provider.label} verwendet API-Key-Konfiguration statt Browser-Login.`);
+        process.exit(1);
+      }
 
-      const { login } = await import("./providers/registry.js");
-      const result = await login(provider, {
+      console.error(`  Anmelden bei ${provider.label} …`);
+      const result = await login(provider.id, {
         cdpPort: flags["cdp-port"] ? Number(flags["cdp-port"]) : undefined,
         headless: flags.headless === "true",
       });
@@ -127,8 +119,8 @@ async function main(): Promise<void> {
         const { createAccount, updateAccount } = await import("./accounts/account-service.js");
         const label = result.info.email
           ? result.info.email.split("@")[0]
-          : PROVIDER_LABELS[provider];
-        const account = await createAccount(label, provider);
+          : provider.label;
+        const account = await createAccount(label, provider.implementation);
         await updateAccount(account.id, {
           email: result.info.email,
           userId: result.info.userId,
@@ -140,7 +132,7 @@ async function main(): Promise<void> {
           lastValidatedAt: new Date().toISOString(),
         });
 
-        console.error(`  ✓ Login bei ${PROVIDER_LABELS[provider]} erfolgreich!`);
+        console.error(`  ✓ Login bei ${provider.label} erfolgreich!`);
         if (result.info.email) {
           console.error(`    Account: ${result.info.email}`);
         }
@@ -152,6 +144,8 @@ async function main(): Promise<void> {
           "login-timeout": "Zeitüberschreitung – bitte melde dich manuell an.",
           "plan-not-supported": "Dieser Account hat nicht den benötigten Zugriff.",
           "session-extraction-failed": "Session-Daten konnten nicht gelesen werden.",
+          "configuration-required": "Dieser Provider muss über die Konfiguration eingerichtet werden.",
+          "unknown-provider": "Der Provider ist nicht registriert.",
           "user-cancelled": "Login abgebrochen.",
           "unknown-error": "Ein unbekannter Fehler ist aufgetreten.",
         };
@@ -168,12 +162,15 @@ async function main(): Promise<void> {
         const providers = listProviders();
         console.error("  Verfügbare Provider:");
         console.error("");
-        for (const p of providers) {
-          const planTag = p.requiredPlan ? ` (${p.requiredPlan})` : "";
-          console.error(`    ${p.id.padEnd(14)} ${p.label}${planTag}`);
+        for (const provider of providers) {
+          const planTag = provider.requiredPlan ? ` (${provider.requiredPlan})` : "";
+          const authTag = provider.authType === "api-key" ? " [API key]" : "";
+          console.error(
+            `    ${provider.id.padEnd(18)} ${provider.label}${planTag}${authTag}`,
+          );
         }
         console.error("");
-        console.error("  Nutzung: zt login --provider=<name>");
+        console.error("  Nutzung: zt login --provider=<provider-id>");
         process.exit(0);
       } else {
         console.error(`  Unbekannter Befehl: providers ${sub ?? ""}`);
@@ -183,21 +180,27 @@ async function main(): Promise<void> {
       break;
     }
 
-    case "start":
+    case "start": {
       console.error("  Starte Gateway …");
       const { startGateway } = await import("./gateway/gateway.js");
       const server = await startGateway({
         host: flags.host ?? "127.0.0.1",
         port: flags.port ? Number(flags.port) : 3000,
       });
-      // Block – keep running until SIGINT/SIGTERM
       await new Promise<void>((resolve) => {
-        process.on("SIGINT", () => { console.error("\n  Gateway heruntergefahren."); resolve(); });
-        process.on("SIGTERM", () => { console.error("\n  Gateway heruntergefahren."); resolve(); });
+        process.on("SIGINT", () => {
+          console.error("\n  Gateway heruntergefahren.");
+          resolve();
+        });
+        process.on("SIGTERM", () => {
+          console.error("\n  Gateway heruntergefahren.");
+          resolve();
+        });
       });
       await server.close();
       process.exit(0);
       break;
+    }
 
     case "status":
       logger.info("Status-Befehl noch nicht implementiert (PR 8)");
@@ -220,17 +223,18 @@ async function main(): Promise<void> {
           process.exit(0);
         }
         console.error("  Gespeicherte Konten:");
-        for (const a of accounts) {
-          const label = a.label.padEnd(20);
-          const provider = (a.provider ?? "chatgpt").padEnd(12);
-          const status = a.sessionStatus.padEnd(10);
-          console.error(`    ${a.id.padEnd(14)} ${label} ${provider} ${status}`);
+        for (const account of accounts) {
+          const label = account.label.padEnd(20);
+          const provider = (account.provider ?? "chatgpt").padEnd(12);
+          const status = account.sessionStatus.padEnd(10);
+          console.error(`    ${account.id.padEnd(14)} ${label} ${provider} ${status}`);
         }
         process.exit(0);
       } else if (command[1] === "validate") {
         const accountId = command[2];
-        const { listAccounts } = await import("./accounts/account-service.js");
-        const { validateAccountSession, validateAllSessions } = await import("./session/session-service.js");
+        const { validateAccountSession, validateAllSessions } = await import(
+          "./session/session-service.js"
+        );
 
         if (accountId) {
           const { getAccount } = await import("./accounts/account-repository.js");
@@ -257,10 +261,15 @@ async function main(): Promise<void> {
           }
           let valid = 0;
           let invalid = 0;
-          for (const r of results) {
-            const icon = r.valid ? "✓" : "✗";
-            console.error(`    ${icon} ${r.accountId.padEnd(14)} ${r.provider.padEnd(12)} ${r.valid ? "gültig" : r.error ?? r.status}`);
-            if (r.valid) valid++; else invalid++;
+          for (const result of results) {
+            const icon = result.valid ? "✓" : "✗";
+            console.error(
+              `    ${icon} ${result.accountId.padEnd(14)} ${result.provider.padEnd(12)} ${
+                result.valid ? "gültig" : (result.error ?? result.status)
+              }`,
+            );
+            if (result.valid) valid++;
+            else invalid++;
           }
           console.error(`  ${valid} gültig, ${invalid} ungültig`);
         }
@@ -294,12 +303,14 @@ async function main(): Promise<void> {
         }
         console.error(`  Verfügbare Modelle (${models.length}):`);
         console.error("");
-        for (const m of models) {
+        for (const model of models) {
           const tags = [];
-          if (m.capabilities.vision) tags.push("vision");
-          if (m.capabilities.voice) tags.push("voice");
+          if (model.capabilities.vision) tags.push("vision");
+          if (model.capabilities.voice) tags.push("voice");
           const tagStr = tags.length ? ` [${tags.join(", ")}]` : "";
-          console.error(`    ${m.id.padEnd(30)} ${m.provider.padEnd(12)}${tagStr}`);
+          console.error(
+            `    ${model.id.padEnd(30)} ${model.provider.padEnd(12)}${tagStr}`,
+          );
         }
         process.exit(0);
       } else if (command[1] === "refresh") {
