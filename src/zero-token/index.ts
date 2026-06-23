@@ -184,9 +184,19 @@ async function main(): Promise<void> {
     }
 
     case "start":
-      logger.info("Gateway-Start noch nicht implementiert (PR 6)");
-      console.error("  Gateway-Start: noch nicht implementiert.");
-      process.exit(1);
+      console.error("  Starte Gateway …");
+      const { startGateway } = await import("./gateway/gateway.js");
+      const server = await startGateway({
+        host: flags.host ?? "127.0.0.1",
+        port: flags.port ? Number(flags.port) : 3000,
+      });
+      // Block – keep running until SIGINT/SIGTERM
+      await new Promise<void>((resolve) => {
+        process.on("SIGINT", () => { console.error("\n  Gateway heruntergefahren."); resolve(); });
+        process.on("SIGTERM", () => { console.error("\n  Gateway heruntergefahren."); resolve(); });
+      });
+      await server.close();
+      process.exit(0);
       break;
 
     case "status":
