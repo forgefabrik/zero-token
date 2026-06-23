@@ -35,6 +35,6 @@ export function getProviderMeta(id: string): ProviderMeta | undefined {
 
 export function providerLoginCommand(provider: ProviderMeta): string {
   return provider.authType === "web-login"
-    ? `zt login --provider=${provider.id}`
-    : `zt config set providers.${provider.id}.apiKey <API_KEY>`;
+    ? `nova login --provider=${provider.id}`
+    : `nova config set providers.${provider.id}.apiKey <API_KEY>`;
 }
