@@ -1,4 +1,4 @@
-import type { ProviderType } from "../accounts/account-types.js";
+import type { ProviderId, ProviderType } from "../accounts/account-types.js";
 
 /**
  * Browser launch/connection configuration shared by all providers.
@@ -48,6 +48,8 @@ export type ProviderLoginFailureReason =
   | "login-timeout"
   | "plan-not-supported"
   | "session-extraction-failed"
+  | "configuration-required"
+  | "unknown-provider"
   | "user-cancelled"
   | "unknown-error";
 
@@ -55,15 +57,19 @@ export type ProviderLoginFailureReason =
  * Descriptor for a registered provider.
  */
 export interface ProviderDescriptor {
-  id: ProviderType;
+  /** Canonical public ID, e.g. chatgpt-web. */
+  id: ProviderId;
+  /** Stable internal key used in persisted account records. */
+  implementation: ProviderType;
+  /** Backwards-compatible CLI/config aliases. */
+  aliases: readonly string[];
   label: string;
-  /** URL the browser should open for login */
+  /** URL the browser should open for login or API-key management. */
   loginUrl: string;
-  /** Whether this provider requires a specific plan (e.g. ChatGPT Plus) */
+  /** Whether this provider requires a specific plan (e.g. ChatGPT Plus). */
   requiredPlan?: "plus" | "pro";
-  /** The config key for storing plan requirement */
   authType: "web-login" | "api-key";
-  /** Color for UI display (hex) */
+  /** Color for UI display (hex). */
   color: string;
 }
 
