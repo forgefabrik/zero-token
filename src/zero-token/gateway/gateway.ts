@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { readFileSync, existsSync } from "node:fs";
+import { join, extname } from "node:path";
 import type { ChatCompletionRequest } from "../inference/types.js";
 import logger from "../logger.js";
 
@@ -144,6 +146,148 @@ export function createGateway(options: GatewayOptions = {}) {
       );
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Admin API (für CLI und Web-Konsole)
+  // -----------------------------------------------------------------------
+
+  // GET /api/accounts
+  app.get("/api/accounts", async (c) => {
+    const { listAccounts } = await import("../accounts/account-service.js");
+    const accounts = await listAccounts();
+    const masked = accounts.map((a) => {
+      const { cookies, accessToken, ...rest } = a;
+      return {
+        ...rest,
+        cookiesPresent: !!cookies,
+        hasAccessToken: !!accessToken,
+      };
+    });
+    return c.json(masked);
+  });
+
+  // GET /api/accounts/:id
+  app.get("/api/accounts/:id", async (c) => {
+    const { getAccount } = await import("../accounts/account-repository.js");
+    const id = c.req.param("id");
+    const account = await getAccount(id);
+    if (!account) return c.json({ error: "Account nicht gefunden" }, 404);
+    const { cookies, accessToken, ...rest } = account;
+    return c.json({ ...rest, cookiesPresent: !!cookies, hasAccessToken: !!accessToken });
+  });
+
+  // DELETE /api/accounts/:id
+  app.delete("/api/accounts/:id", async (c) => {
+    const { getAccount } = await import("../accounts/account-repository.js");
+    const { deleteAccount } = await import("../accounts/account-service.js");
+    const id = c.req.param("id");
+    const account = await getAccount(id);
+    if (!account) return c.json({ error: "Account nicht gefunden" }, 404);
+    await deleteAccount(id);
+    return c.json({ success: true, id });
+  });
+
+  // POST /api/accounts/:id/validate
+  app.post("/api/accounts/:id/validate", async (c) => {
+    const { getAccount } = await import("../accounts/account-repository.js");
+    const { validateAccountSession } = await import("../session/session-service.js");
+    const id = c.req.param("id");
+    const account = await getAccount(id);
+    if (!account) return c.json({ error: "Account nicht gefunden" }, 404);
+    const result = await validateAccountSession(account);
+    return c.json(result);
+  });
+
+  // GET /api/models
+  app.get("/api/models", async (c) => {
+    const { getCachedModels } = await import("../models/model-cache.js");
+    const models = await getCachedModels();
+    return c.json(models ?? []);
+  });
+
+  // POST /api/models/refresh
+  app.post("/api/models/refresh", async (c) => {
+    const { refreshModels } = await import("../models/model-service.js");
+    const models = await refreshModels();
+    return c.json({ count: models.length, models });
+  });
+
+  // GET /api/status
+  app.get("/api/status", async (c) => {
+    const { getCachedModels } = await import("../models/model-cache.js");
+    const { listAccounts } = await import("../accounts/account-service.js");
+    const accounts = await listAccounts();
+    const cached = await getCachedModels();
+    return c.json({
+      accounts: accounts.length,
+      validSessions: accounts.filter((a) => a.sessionStatus === "valid").length,
+      models: cached?.length ?? 0,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // GET /api/config
+  app.get("/api/config", async (c) => {
+    const { loadConfig } = await import("../config/config.js");
+    const config = await loadConfig();
+    // Redact proxy passwords
+    const safe = { ...config };
+    if (safe.proxy) {
+      for (const key of Object.keys(safe.proxy)) {
+        const scope = safe.proxy[key as keyof typeof safe.proxy];
+        if (scope?.password) safe.proxy[key as keyof typeof safe.proxy] = { ...scope, password: "[REDACTED]" };
+      }
+    }
+    return c.json(safe);
+  });
+
+  // -----------------------------------------------------------------------
+  // Static file serving for web-console (Svelte SPA)
+  // -----------------------------------------------------------------------
+  const distPath = join(process.cwd(), "web-console", "dist");
+  const distExists = existsSync(distPath);
+
+  if (distExists) {
+    // MIME types
+    const MIME: Record<string, string> = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".svg": "image/svg+xml",
+      ".png": "image/png",
+      ".ico": "image/x-icon",
+      ".woff2": "font/woff2",
+      ".json": "application/json",
+    };
+
+    // SPA catch-all (after all API routes)
+    app.all("*", async (c) => {
+      const url = new URL(c.req.url);
+      const path = url.pathname;
+
+      // Don't catch API routes
+      if (path.startsWith("/api/") || path.startsWith("/v1/") || path === "/health" || path === "/ready") {
+        return c.notFound();
+      }
+
+      // Try exact file match
+      const filePath = join(distPath, path === "/" ? "index.html" : path);
+      if (existsSync(filePath)) {
+        const ext = extname(filePath);
+        const contentType = MIME[ext] || "application/octet-stream";
+        const content = readFileSync(filePath);
+        return c.newResponse(content, 200, { "Content-Type": contentType });
+      }
+
+      // SPA fallback: serve index.html
+      const indexHtml = readFileSync(join(distPath, "index.html"), "utf-8");
+      return c.html(indexHtml);
+    });
+
+    logger.info("Web-Konsole (Svelte) wird statisch ausgeliefert: %s", distPath);
+  } else {
+    logger.warn("Web-Konsole nicht gefunden (%s) – nur API-Modus", distPath);
+  }
 
   return { app, options: opts };
 }

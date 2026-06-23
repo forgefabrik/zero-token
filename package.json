@@ -26,7 +26,8 @@
     "@hono/node-server": "^2.0.6",
     "hono": "^4.12.0",
     "pino": "^10.3.0",
-    "playwright": "^1.61.0"
+    "playwright": "^1.61.0",
+    "tsx": "^4.22.4"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.0",

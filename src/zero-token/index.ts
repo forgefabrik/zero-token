@@ -200,15 +200,31 @@ async function main(): Promise<void> {
       break;
 
     case "status":
-      logger.info("Status-Befehl noch nicht implementiert (PR 8)");
-      console.error("  Systemstatus: noch nicht implementiert.");
-      process.exit(1);
+      {
+        console.error("  Systemstatus:");
+        console.error("");
+        const { loadConfig } = await import("./config/config.js");
+        const { listAccounts } = await import("./accounts/account-service.js");
+        const { getCachedModels } = await import("./models/model-cache.js");
+        const config = await loadConfig();
+        const accounts = await listAccounts();
+        const valid = accounts.filter((a) => a.sessionStatus === "valid").length;
+        const cached = await getCachedModels();
+        console.error(`    Gateway:     ${config.gateway.host}:${config.gateway.port}`);
+        console.error(`    Accounts:    ${accounts.length} (${valid} gültig)`);
+        console.error(`    Modelle:     ${cached?.length ?? 0} gecacht`);
+        console.error(`    Strategie:   ${config.selectionStrategy}`);
+        process.exit(0);
+      }
       break;
 
     case "doctor":
-      logger.info("Doctor-Befehl noch nicht implementiert (PR 8)");
-      console.error("  Systemdiagnose: noch nicht implementiert.");
-      process.exit(1);
+      {
+        const { runDoctor, printDoctorResult } = await import("./cli/doctor-command.js");
+        const result = await runDoctor();
+        printDoctorResult(result);
+        process.exit(result.allPassed ? 0 : 1);
+      }
       break;
 
     case "accounts":
@@ -266,9 +282,21 @@ async function main(): Promise<void> {
         }
         process.exit(0);
       } else if (command[1] === "remove") {
-        logger.info("Accounts remove noch nicht implementiert (PR 2)");
-        console.error("  Konto entfernen: noch nicht implementiert.");
-        process.exit(1);
+        const accountId = command[2];
+        if (!accountId) {
+          console.error("  Bitte Account-ID angeben: zt accounts remove <id>");
+          process.exit(1);
+        }
+        const { getAccount } = await import("./accounts/account-repository.js");
+        const { deleteAccount } = await import("./accounts/account-service.js");
+        const existing = await getAccount(accountId);
+        if (!existing) {
+          console.error(`  ✗ Account nicht gefunden: ${accountId}`);
+          process.exit(1);
+        }
+        await deleteAccount(accountId);
+        console.error(`  ✓ Account entfernt: ${existing.label} (${accountId})`);
+        process.exit(0);
       } else if (command[1] === "import") {
         logger.info("Accounts import noch nicht implementiert (PR 8)");
         console.error("  Konten importieren: noch nicht implementiert.");
@@ -322,9 +350,27 @@ async function main(): Promise<void> {
       break;
 
     case "config":
-      logger.info("Config-Befehle noch nicht implementiert (PR 8)");
-      console.error("  Konfiguration: noch nicht implementiert.");
-      process.exit(1);
+      if (command[1] === "show") {
+        const { loadConfig } = await import("./config/config.js");
+        const config = await loadConfig();
+        console.error("  Konfiguration:");
+        console.error("");
+        console.error(`    Gateway:       ${config.gateway.host}:${config.gateway.port}`);
+        console.error(`    Log-Level:     ${config.gateway.logLevel}`);
+        console.error(`    CORS:          ${config.gateway.cors}`);
+        console.error(`    Strategie:     ${config.selectionStrategy}`);
+        console.error(`    Cache-TTL:     ${config.modelsCacheTTL}s`);
+        if (config.proxy?.global) {
+          const p = config.proxy.global;
+          console.error(`    Proxy:         ${p.protocol}://${p.host}:${p.port}`);
+        }
+        console.error(`    UI:            ${config.ui.enabled ? `Port ${config.ui.port}` : "deaktiviert"}`);
+        process.exit(0);
+      } else {
+        console.error(`  Unbekannter Befehl: config ${command[1] ?? ""}`);
+        printHelp();
+        process.exit(1);
+      }
       break;
 
     default:

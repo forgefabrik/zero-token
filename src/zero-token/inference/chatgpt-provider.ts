@@ -49,26 +49,33 @@ export class ChatGPTProvider implements InferenceProvider {
     request: ChatCompletionRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ReadableStream<ChatCompletionChunk>> {
+    const { quotaManager } = await import("../quota/quota-manager.js");
+    await quotaManager.init();
+
     const account = await this.resolveAccount(request.accountId);
     const convRequest = this.buildConversationRequest(request, account);
     const headers = this.buildHeaders(account);
 
-    return this.streamConversation(convRequest, headers, options?.signal);
+    try {
+      const stream = await this.streamConversation(convRequest, headers, options?.signal);
+      await quotaManager.reportSuccess(account.id);
+      return stream;
+    } catch (err) {
+      await quotaManager.reportError(account.id, err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    }
   }
 
   private async resolveAccount(accountId?: string): Promise<ChatGPTPlusAccount> {
     const id = accountId ?? this.accountId;
     if (!id) {
-      const { listAccounts } = await import("../accounts/account-service.js");
-      const accounts = await listAccounts();
-      const active = accounts.find(
-        (a) => a.provider === "chatgpt" && a.enabled && a.sessionStatus === "valid",
-      );
-      if (!active) {
+      const { quotaManager } = await import("../quota/quota-manager.js");
+      const account = await quotaManager.acquireAccount({ provider: "chatgpt" });
+      if (!account) {
         throw new InferenceError("Kein aktiver ChatGPT-Account verfügbar.", 503, "chatgpt");
       }
-      this.accountId = active.id;
-      return active;
+      this.accountId = account.id;
+      return account;
     }
 
     const account = await getAccount(id);
@@ -77,6 +84,9 @@ export class ChatGPTProvider implements InferenceProvider {
     }
     if (!account.enabled) {
       throw new InferenceError(`Account deaktiviert: ${id}`, 403, "chatgpt");
+    }
+    if (account.sessionStatus !== "valid") {
+      throw new InferenceError(`Account-Session ungültig: ${id}`, 403, "chatgpt");
     }
     return account;
   }
