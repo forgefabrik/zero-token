@@ -6,6 +6,7 @@
   import Agent from "./pages/Agent.svelte";
   import Accounts from "./pages/Accounts.svelte";
   import Models from "./pages/Models.svelte";
+  import Logs from "./pages/Logs.svelte";
   import Settings from "./pages/Settings.svelte";
   import { APP_NAME, APP_TAGLINE, APP_VERSION } from "./lib/brand";
 
@@ -16,6 +17,7 @@
     | "agent"
     | "accounts"
     | "models"
+    | "logs"
     | "settings";
 
   const navItems: { key: PageKey; label: string; icon: string; description: string }[] = [
@@ -25,6 +27,7 @@
     { key: "agent", label: "Agent", icon: "⌁", description: "Coding-Agent starten" },
     { key: "accounts", label: "Accounts", icon: "◎", description: "Sessions verwalten" },
     { key: "models", label: "Modelle", icon: "◇", description: "Modelle durchsuchen" },
+    { key: "logs", label: "Live-Logs", icon: "≋", description: "Ereignisse beobachten" },
     { key: "settings", label: "Einstellungen", icon: "⚙", description: "Gateway und Konfiguration" },
   ];
 
@@ -127,6 +130,8 @@
         <Accounts />
       {:else if page === "models"}
         <Models />
+      {:else if page === "logs"}
+        <Logs />
       {:else if page === "settings"}
         <Settings />
       {/if}
