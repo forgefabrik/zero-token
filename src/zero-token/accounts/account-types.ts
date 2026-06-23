@@ -12,6 +12,7 @@ export type UsageState =
   | "exhausted"
   | "error";
 
+/** Internal provider keys kept stable for stored account compatibility. */
 export type ProviderType =
   | "chatgpt"
   | "claude"
@@ -20,10 +21,30 @@ export type ProviderType =
   | "grok"
   | "perplexity"
   | "qwen"
+  | "qwen-cn"
   | "kimi"
   | "doubao"
   | "glm"
-  | "xiaomimo";
+  | "glm-intl"
+  | "xiaomimo"
+  | "manus";
+
+/** Canonical public provider IDs used by the CLI, model registry and gateway. */
+export type ProviderId =
+  | "chatgpt-web"
+  | "claude-web"
+  | "gemini-web"
+  | "deepseek-web"
+  | "grok-web"
+  | "perplexity-web"
+  | "qwen-web"
+  | "qwen-cn-web"
+  | "kimi-web"
+  | "doubao-web"
+  | "glm-web"
+  | "glm-intl-web"
+  | "xiaomimo-web"
+  | "manus-api";
 
 export type AccountPlan = "plus" | "pro" | "free" | "unknown";
 
