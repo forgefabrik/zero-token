@@ -1,76 +1,128 @@
-# Zero Token
+# Nova
 
-> **HINWEIS:** Dies ist ein **inoffizielles, experimentelles lokales Werkzeug**. Es ist kein OpenAI-Produkt und steht in keinem Zusammenhang mit OpenAI. Es verwendet ausschließlich die bestehende ChatGPT-Websession des Nutzers und kommuniziert direkt mit `chatgpt.com`.
+> **Hinweis:** Nova ist ein inoffizielles, experimentelles lokales Werkzeug. Es ist kein Produkt von OpenAI, Anthropic, Google oder einem anderen unterstützten Anbieter.
 
-Zero Token stellt die Chatmodelle eines lokal angemeldeten ChatGPT-Plus-Kontos über folgende lokale Oberflächen bereit:
+Nova verbindet lokal angemeldete Web-Modelle und API-Provider mit einem OpenAI-kompatiblen Gateway, einer Web-Konsole, einem Playground und einem optionalen Coding-Agent.
 
-- **CLI** – `zt`-Befehl für Login, Account-Verwaltung, Modellabfragen und Systemdiagnose
-- **Web-Konsole** – Browser-UI zur Account-, Modell- und Gateway-Verwaltung
-- **OpenAI-kompatibles HTTP-Gateway** – `GET /v1/models`, `POST /v1/responses`, `POST /v1/chat/completions`
-- **Mehrere ChatGPT-Plus-Konten** – optionale Umschaltung bei Nutzungslimits
-- **Proxy-Konfiguration** – optional, global oder pro Bereich
+## Funktionen
+
+- **Multi-Provider-Gateway** für ChatGPT Web, Claude Web, Gemini Web, DeepSeek, Qwen, GLM und weitere Provider
+- **OpenAI-kompatible Endpunkte** für `/v1/models`, `/v1/responses` und `/v1/chat/completions`
+- **Web-Konsole** für Provider, Accounts, Modelle, Einstellungen und Playground
+- **Nova Agent** als Integration des eigenständigen MIT-lizenzierten Projekts `yoyo-evolve`
+- **Lokale Speicherung** mit restriktiven Dateiberechtigungen und redigierter Admin-API
+- **Kompatibilitätsalias**: Der bisherige Befehl `zt` bleibt gültig
+
+## Voraussetzungen
+
+- Node.js `>= 22.15.0`
+- pnpm
+- Chrome oder Chromium für Web-Logins
+- optional Rust/Cargo für den Coding-Agent
+
+## Installation
+
+```bash
+pnpm install
+pnpm build
+```
+
+Nach dem Build stehen beide CLI-Namen zur Verfügung:
+
+```bash
+nova --help
+zt --help
+```
 
 ## Schnellstart
 
 ```bash
-# Installation
-pnpm install
+# Provider anzeigen und anmelden
+nova providers list
+nova login --provider=chatgpt-web
 
-# Build
-pnpm build
+# Modelle aktualisieren
+nova models refresh
+nova models list
 
-# Hilfe anzeigen
-pnpm dev --help
+# Gateway starten
+nova start
 ```
 
-## Voraussetzungen
+Das Gateway bindet standardmäßig an `127.0.0.1:3000`.
 
-- **Node.js >= 22.15.0**
-- **pnpm** (verfügbar via `corepack enable && corepack prepare pnpm@latest --activate`)
-- **Chrome/Chromium** (für den Login über `chatgpt.com`)
-- **ChatGPT Plus Account**
+## Nova Agent
 
-## CLI
+Nova integriert `yoyo-evolve` als separates Agent-Backend. Der Rust-Quellbaum wird nicht dupliziert. Stattdessen startet Nova das installierte `yoyo`-Binary mit dessen `custom`-Provider gegen das lokale OpenAI-kompatible Gateway.
 
 ```bash
-zt login                   # Bei chatgpt.com anmelden
-zt start                   # Gateway starten
-zt status                  # Systemstatus
-zt doctor                  # Systemdiagnose
-zt accounts list           # Gespeicherte Konten
-zt accounts validate <id>  # Sitzung validieren
-zt accounts remove <id>    # Konto entfernen
-zt models list             # Verfügbare Modelle
-zt models refresh          # Modellcache aktualisieren
-zt usage refresh           # Nutzungslimits aktualisieren
-zt config show             # Konfiguration anzeigen
+# yoyo-agent über Cargo installieren
+nova agent install
+
+# Projektkonfiguration erzeugen
+nova agent init
+
+# Binary und Gateway prüfen
+nova agent doctor
+
+# Agent starten
+nova agent --model gpt-4o
 ```
 
-## Gateway
+Zusätzliche Argumente werden nur nach `--` an das Agent-Backend weitergegeben:
+
+```bash
+nova agent --model gpt-4o -- --quiet
+```
+
+`nova agent init` erzeugt, sofern noch nicht vorhanden:
+
+- `.yoyo.toml` mit `provider = "custom"` und der lokalen Nova-Gateway-URL
+- `.yoyo/instructions.md` mit Sicherheits- und Projektregeln
+
+## Web-Konsole
+
+```bash
+pnpm ui:build
+nova start
+```
+
+Die Web-Konsole enthält:
+
+- Playground für Streaming-Chat
+- Provider-Onboarding mit kopierbaren Nova-Befehlen
+- Account- und Session-Verwaltung
+- Modellfilter und Cache-Aktualisierung
+- Nova-Agent-Anleitung
+- sichere, redigierte Konfigurationsansicht
+
+## Konfiguration und Migration
+
+Neue Installationen verwenden:
 
 ```text
-GET  /v1/models
-POST /v1/responses
-POST /v1/chat/completions
-GET  /health
-GET  /ready
+~/.config/nova/
 ```
 
-Das Gateway bindet standardmäßig an `127.0.0.1`.
+Existiert bereits ein alter Datenordner unter `~/.config/zero-token/`, verwendet Nova ihn automatisch weiter. Ein expliziter Pfad kann mit `NOVA_HOME` gesetzt werden.
 
 ## Sicherheit
 
-- ChatGPT-Passwörter werden niemals erfasst oder gespeichert
-- Cookies und Sessiondaten werden niemals im Frontend angezeigt
-- Cookies und Tokens dürfen nicht in Logs erscheinen (Pino-Redaction)
-- Account-Dateien werden mit restriktiven Berechtigungen (`0600`) gespeichert
-- Das Gateway ist standardmäßig nur lokal erreichbar
-- Keine garantierte automatische Sessionerneuerung – abgelaufene Sessions erfordern erneuten Browser-Login
+- Passwörter werden nicht gespeichert
+- Cookies, Tokens und API-Schlüssel werden nicht im Frontend angezeigt
+- sensible Werte müssen aus Logs redigiert werden
+- Account-Dateien verwenden restriktive Berechtigungen (`0600`)
+- das Gateway ist standardmäßig nur lokal erreichbar
+- der Agent erhält keine Browser-Cookies oder Account-Dateien, sondern nur Zugriff auf das lokale `/v1`-Gateway
+
+## Drittanbieter
+
+Nova integriert das eigenständige Projekt `yoyo-evolve` von yologdev als optionales ausführbares Backend. Das Projekt steht unter der MIT-Lizenz. Details stehen in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Lizenz
 
-MIT
+Nova steht unter der MIT-Lizenz.
 
 ## Implementierungsplan
 
-Der vollständige Architektur- und Implementierungsplan befindet sich in [docs/zero-token/impl-plan.md](docs/zero-token/impl-plan.md).
+Der bestehende Architektur- und Implementierungsplan befindet sich unter [`docs/zero-token/impl-plan.md`](docs/zero-token/impl-plan.md). Historische Pfade bleiben während der Migration bestehen.
