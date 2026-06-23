@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ProviderType } from "../accounts/account-types.js";
 import type { ProviderBrowserConfig, ProviderLoginFailureReason } from "./provider-types.js";
 import { resolveProvider, login as providerLogin } from "./registry.js";
 import { createAccount, updateAccount } from "../accounts/account-service.js";
@@ -62,7 +63,12 @@ export function getProviderLoginJob(id: string): ProviderLoginJob | undefined {
 
 export function removeProviderLoginJob(id: string): boolean {
   const job = jobs.get(id);
-  if (!job || job.status === "starting" || job.status === "waiting-for-user" || job.status === "saving") {
+  if (
+    !job ||
+    job.status === "starting" ||
+    job.status === "waiting-for-user" ||
+    job.status === "saving"
+  ) {
     return false;
   }
   return jobs.delete(id);
@@ -97,7 +103,7 @@ export function startProviderLoginJob(
 
 async function executeLogin(
   jobId: string,
-  providerType: ReturnType<typeof resolveProvider>["implementation"],
+  providerType: ProviderType,
   config: ProviderBrowserConfig,
 ): Promise<void> {
   try {
@@ -120,7 +126,10 @@ async function executeLogin(
       return;
     }
 
-    updateJob(jobId, { status: "saving", message: "Session wird lokal gespeichert …" });
+    updateJob(jobId, {
+      status: "saving",
+      message: "Session wird lokal gespeichert …",
+    });
     const descriptor = resolveProvider(providerType);
     const accountLabel =
       result.info.name?.trim() ||
@@ -146,7 +155,10 @@ async function executeLogin(
       message: "Account wurde sicher lokal gespeichert.",
       completedAt: new Date().toISOString(),
     });
-    logger.info({ provider: providerType, accountId: account.id }, "Web-UX-Login abgeschlossen");
+    logger.info(
+      { provider: providerType, accountId: account.id },
+      "Web-UX-Login abgeschlossen",
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     updateJob(jobId, {
@@ -155,19 +167,30 @@ async function executeLogin(
       message,
       completedAt: new Date().toISOString(),
     });
-    logger.error({ provider: providerType, error: message }, "Web-UX-Login fehlgeschlagen");
+    logger.error(
+      { provider: providerType, error: message },
+      "Web-UX-Login fehlgeschlagen",
+    );
   }
 }
 
 function failureMessage(reason: ProviderLoginFailureReason): string {
   switch (reason) {
-    case "browser-launch-failed": return "Lokaler Browser konnte nicht geöffnet werden.";
-    case "login-timeout": return "Anmeldung wurde nicht rechtzeitig abgeschlossen.";
-    case "plan-not-supported": return "Der erkannte Account-Plan wird nicht unterstützt.";
-    case "session-extraction-failed": return "Die lokale Sitzung konnte nicht ausgelesen werden.";
-    case "user-cancelled": return "Anmeldung wurde abgebrochen.";
-    case "configuration-required": return "Provider benötigt zusätzliche Konfiguration.";
-    case "unknown-provider": return "Provider ist nicht registriert.";
-    default: return "Anmeldung ist fehlgeschlagen.";
+    case "browser-launch-failed":
+      return "Lokaler Browser konnte nicht geöffnet werden.";
+    case "login-timeout":
+      return "Anmeldung wurde nicht rechtzeitig abgeschlossen.";
+    case "plan-not-supported":
+      return "Der erkannte Account-Plan wird nicht unterstützt.";
+    case "session-extraction-failed":
+      return "Die lokale Sitzung konnte nicht ausgelesen werden.";
+    case "user-cancelled":
+      return "Anmeldung wurde abgebrochen.";
+    case "configuration-required":
+      return "Provider benötigt zusätzliche Konfiguration.";
+    case "unknown-provider":
+      return "Provider ist nicht registriert.";
+    default:
+      return "Anmeldung ist fehlgeschlagen.";
   }
 }
