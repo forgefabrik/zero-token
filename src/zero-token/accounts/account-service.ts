@@ -27,11 +27,15 @@ export function maskEmail(email?: string): string | undefined {
   return email[0] + "***" + email.slice(atIndex);
 }
 
-export async function createAccount(label: string): Promise<ChatGPTPlusAccount> {
+export async function createAccount(
+  label: string,
+  provider: ChatGPTPlusAccount["provider"] = "chatgpt",
+): Promise<ChatGPTPlusAccount> {
   const now = new Date().toISOString();
   const account: ChatGPTPlusAccount = {
     id: generateId(),
     label,
+    provider,
     cookies: "",
     enabled: true,
     priority: 0,

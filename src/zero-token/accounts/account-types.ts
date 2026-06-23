@@ -12,7 +12,20 @@ export type UsageState =
   | "exhausted"
   | "error";
 
-export type AccountPlan = "plus" | "unknown";
+export type ProviderType =
+  | "chatgpt"
+  | "claude"
+  | "gemini"
+  | "deepseek"
+  | "grok"
+  | "perplexity"
+  | "qwen"
+  | "kimi"
+  | "doubao"
+  | "glm"
+  | "xiaomimo";
+
+export type AccountPlan = "plus" | "pro" | "free" | "unknown";
 
 export interface UsageStatus {
   state: UsageState;
@@ -24,6 +37,7 @@ export interface UsageStatus {
 export interface ChatGPTPlusAccount {
   id: string;
   label: string;
+  provider: ProviderType;
 
   email?: string;
   userId?: string;

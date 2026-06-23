@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import pino from "pino";
+import type { ProviderType } from "./accounts/account-types.js";
 
 const logger = pino({
   name: "zero-token",
@@ -13,7 +14,7 @@ const logger = pino({
 function printHeader(): void {
   console.error("");
   console.error("  Zero Token v0.1.0");
-  console.error("  ChatGPT-Plus-Chatmodelle lokal bereitstellen");
+  console.error("  KI-Chatmodelle lokal bereitstellen");
   console.error("");
   console.error("  Hinweis: Inoffizielles, experimentelles lokales Werkzeug.");
   console.error("  Kein OpenAI-Produkt.");
@@ -26,25 +27,72 @@ function printHelp(): void {
   console.error("    zt <command> [options]");
   console.error("");
   console.error("  Befehle:");
-  console.error("    login               Bei chatgpt.com anmelden");
-  console.error("    start               Gateway starten");
-  console.error("    status              Systemstatus anzeigen");
-  console.error("    doctor              Systemdiagnose");
-  console.error("    accounts list       Gespeicherte Konten auflisten");
-  console.error("    accounts validate   Sitzung validieren");
-  console.error("    accounts remove     Konto entfernen");
-  console.error("    accounts import     Konten importieren");
-  console.error("    accounts export     Konten exportieren");
-  console.error("    models list         Verfügbare Modelle auflisten");
-  console.error("    models refresh      Modellcache aktualisieren");
-  console.error("    usage refresh       Nutzungslimits aktualisieren");
-  console.error("    config show         Konfiguration anzeigen");
-  console.error("    help, --help        Diese Hilfe anzeigen");
+  console.error("    login [--provider=<name>]  Bei einem KI-Provider anmelden");
+  console.error("    providers list             Verfügbare Provider auflisten");
+  console.error("    start                      Gateway starten");
+  console.error("    status                     Systemstatus anzeigen");
+  console.error("    doctor                     Systemdiagnose");
+  console.error("    accounts list              Gespeicherte Konten auflisten");
+  console.error("    accounts validate          Sitzung validieren");
+  console.error("    accounts remove            Konto entfernen");
+  console.error("    accounts import            Konten importieren");
+  console.error("    accounts export            Konten exportieren");
+  console.error("    models list                Verfügbare Modelle auflisten");
+  console.error("    models refresh             Modellcache aktualisieren");
+  console.error("    usage refresh              Nutzungslimits aktualisieren");
+  console.error("    config show                Konfiguration anzeigen");
+  console.error("    help, --help               Diese Hilfe anzeigen");
+  console.error("");
+  console.error("  Beispiele:");
+  console.error("    zt login                       ChatGPT-Plus-Login");
+  console.error("    zt login --provider=claude      Claude-Pro-Login");
+  console.error("    zt login --provider=gemini      Gemini-Login");
+  console.error("    zt providers list               Alle verfügbaren Provider");
   console.error("");
   console.error("  Weitere Informationen:");
   console.error("    https://github.com/bkgoder/zero-token");
   console.error("");
 }
+
+/**
+ * Parses --key=value or --key value style arguments.
+ */
+function parseArgs(args: string[]): { command: string[]; flags: Record<string, string> } {
+  const flags: Record<string, string> = {};
+  const command: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith("--")) {
+      const eqIdx = arg.indexOf("=");
+      if (eqIdx !== -1) {
+        flags[arg.slice(2, eqIdx)] = arg.slice(eqIdx + 1);
+      } else if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+        flags[arg.slice(2)] = args[++i];
+      } else {
+        flags[arg.slice(2)] = "true";
+      }
+    } else {
+      command.push(arg);
+    }
+  }
+
+  return { command, flags };
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  gemini: "Gemini",
+  deepseek: "DeepSeek",
+  grok: "Grok",
+  perplexity: "Perplexity",
+  qwen: "Qwen",
+  kimi: "Kimi",
+  doubao: "Doubao",
+  glm: "GLM",
+  xiaomimo: "XiaoMiMo",
+};
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -54,51 +102,164 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const command = args[0];
+  const { command, flags } = parseArgs(args);
+  const cmd = command[0];
 
-  switch (command) {
-    case "login":
-      logger.info("Login-Befehl noch nicht implementiert (PR 3)");
-      console.error("  Login über Browser: noch nicht implementiert.");
-      process.exit(1);
+  switch (cmd) {
+    case "login": {
+      const provider = (flags.provider ?? "chatgpt") as ProviderType;
+
+      if (!PROVIDER_LABELS[provider]) {
+        console.error(`  ✗ Unbekannter Provider: ${provider}`);
+        console.error(`    Verfügbare Provider: ${Object.keys(PROVIDER_LABELS).join(", ")}`);
+        process.exit(1);
+      }
+
+      console.error(`  Anmelden bei ${PROVIDER_LABELS[provider]} …`);
+
+      const { login } = await import("./providers/registry.js");
+      const result = await login(provider, {
+        cdpPort: flags["cdp-port"] ? Number(flags["cdp-port"]) : undefined,
+        headless: flags.headless === "true",
+      });
+
+      if (result.ok) {
+        const { createAccount, updateAccount } = await import("./accounts/account-service.js");
+        const label = result.info.email
+          ? result.info.email.split("@")[0]
+          : PROVIDER_LABELS[provider];
+        const account = await createAccount(label, provider);
+        await updateAccount(account.id, {
+          email: result.info.email,
+          userId: result.info.userId,
+          plan: result.info.plan,
+          cookies: result.session.cookies,
+          accessToken: result.session.accessToken,
+          userAgent: result.session.userAgent,
+          sessionStatus: "valid",
+          lastValidatedAt: new Date().toISOString(),
+        });
+
+        console.error(`  ✓ Login bei ${PROVIDER_LABELS[provider]} erfolgreich!`);
+        if (result.info.email) {
+          console.error(`    Account: ${result.info.email}`);
+        }
+        console.error(`    Plan:    ${result.info.plan}`);
+        process.exit(0);
+      } else {
+        const messages: Record<string, string> = {
+          "browser-launch-failed": "Browser konnte nicht gestartet werden.",
+          "login-timeout": "Zeitüberschreitung – bitte melde dich manuell an.",
+          "plan-not-supported": "Dieser Account hat nicht den benötigten Zugriff.",
+          "session-extraction-failed": "Session-Daten konnten nicht gelesen werden.",
+          "user-cancelled": "Login abgebrochen.",
+          "unknown-error": "Ein unbekannter Fehler ist aufgetreten.",
+        };
+        console.error(`  ✗ ${messages[result.reason] ?? "Fehler"}`);
+        process.exit(1);
+      }
       break;
+    }
+
+    case "providers": {
+      const sub = command[1];
+      if (sub === "list") {
+        const { listProviders } = await import("./providers/registry.js");
+        const providers = listProviders();
+        console.error("  Verfügbare Provider:");
+        console.error("");
+        for (const p of providers) {
+          const planTag = p.requiredPlan ? ` (${p.requiredPlan})` : "";
+          console.error(`    ${p.id.padEnd(14)} ${p.label}${planTag}`);
+        }
+        console.error("");
+        console.error("  Nutzung: zt login --provider=<name>");
+        process.exit(0);
+      } else {
+        console.error(`  Unbekannter Befehl: providers ${sub ?? ""}`);
+        printHelp();
+        process.exit(1);
+      }
+      break;
+    }
+
     case "start":
       logger.info("Gateway-Start noch nicht implementiert (PR 6)");
       console.error("  Gateway-Start: noch nicht implementiert.");
       process.exit(1);
       break;
+
     case "status":
       logger.info("Status-Befehl noch nicht implementiert (PR 8)");
       console.error("  Systemstatus: noch nicht implementiert.");
       process.exit(1);
       break;
+
     case "doctor":
       logger.info("Doctor-Befehl noch nicht implementiert (PR 8)");
       console.error("  Systemdiagnose: noch nicht implementiert.");
       process.exit(1);
       break;
+
     case "accounts":
-      logger.info("Account-Befehle noch nicht implementiert (PR 2-3)");
-      console.error("  Account-Verwaltung: noch nicht implementiert.");
-      process.exit(1);
+      if (command[1] === "list") {
+        const { listAccounts } = await import("./accounts/account-service.js");
+        const accounts = await listAccounts();
+        if (accounts.length === 0) {
+          console.error("  Keine Konten gespeichert.");
+          process.exit(0);
+        }
+        console.error("  Gespeicherte Konten:");
+        for (const a of accounts) {
+          const label = a.label.padEnd(20);
+          const provider = (a.provider ?? "chatgpt").padEnd(12);
+          const status = a.sessionStatus.padEnd(10);
+          console.error(`    ${a.id.padEnd(14)} ${label} ${provider} ${status}`);
+        }
+        process.exit(0);
+      } else if (command[1] === "validate") {
+        logger.info("Accounts validate noch nicht implementiert (PR 4)");
+        console.error("  Sitzung validieren: noch nicht implementiert.");
+        process.exit(1);
+      } else if (command[1] === "remove") {
+        logger.info("Accounts remove noch nicht implementiert (PR 2)");
+        console.error("  Konto entfernen: noch nicht implementiert.");
+        process.exit(1);
+      } else if (command[1] === "import") {
+        logger.info("Accounts import noch nicht implementiert (PR 8)");
+        console.error("  Konten importieren: noch nicht implementiert.");
+        process.exit(1);
+      } else if (command[1] === "export") {
+        logger.info("Accounts export noch nicht implementiert (PR 8)");
+        console.error("  Konten exportieren: noch nicht implementiert.");
+        process.exit(1);
+      } else {
+        console.error(`  Unbekannter Befehl: accounts ${command[1] ?? ""}`);
+        printHelp();
+        process.exit(1);
+      }
       break;
+
     case "models":
       logger.info("Modell-Befehle noch nicht implementiert (PR 4)");
       console.error("  Modellverwaltung: noch nicht implementiert.");
       process.exit(1);
       break;
+
     case "usage":
       logger.info("Usage-Befehle noch nicht implementiert (PR 7)");
       console.error("  Nutzungslimits: noch nicht implementiert.");
       process.exit(1);
       break;
+
     case "config":
       logger.info("Config-Befehle noch nicht implementiert (PR 8)");
       console.error("  Konfiguration: noch nicht implementiert.");
       process.exit(1);
       break;
+
     default:
-      console.error(`  Unbekannter Befehl: ${command}`);
+      console.error(`  Unbekannter Befehl: ${cmd}`);
       printHelp();
       process.exit(1);
   }
