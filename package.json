@@ -7,6 +7,7 @@
   "license": "MIT",
   "bin": {
     "nova": "./dist/index.js",
+    "nova-discover": "./dist/discover.js",
     "nova-ga": "./dist/genericagent.js",
     "zt": "./dist/index.js"
   },
