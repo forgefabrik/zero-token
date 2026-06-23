@@ -153,5 +153,8 @@ export interface Health {
 }
 
 export function getHealth(): Promise<Health> {
-  return request<Health>("/../health");
+  return fetch("/health").then((r) => {
+    if (!r.ok) throw new Error(`Health-Check fehlgeschlagen (HTTP ${r.status})`);
+    return r.json();
+  });
 }
