@@ -3,12 +3,14 @@
   import Accounts from "./pages/Accounts.svelte";
   import Models from "./pages/Models.svelte";
   import Settings from "./pages/Settings.svelte";
+  import Playground from "./pages/Playground.svelte";
 
-  let page = $state("dashboard");
+  let page = $state("playground");
 
-  type PageKey = "dashboard" | "accounts" | "models" | "settings";
+  type PageKey = "dashboard" | "accounts" | "models" | "settings" | "playground";
 
   const navItems: { key: PageKey; label: string }[] = [
+    { key: "playground", label: "Playground" },
     { key: "dashboard", label: "Dashboard" },
     { key: "accounts", label: "Accounts" },
     { key: "models", label: "Modelle" },
@@ -44,11 +46,15 @@
   </aside>
 
   <main class="main">
-    <div class="page-header">
-      <h1>{navItems.find((n) => n.key === page)?.label ?? ""}</h1>
-    </div>
-    <div class="page-content">
-      {#if page === "dashboard"}
+    {#if page !== "playground"}
+      <div class="page-header">
+        <h1>{navItems.find((n) => n.key === page)?.label ?? ""}</h1>
+      </div>
+    {/if}
+    <div class="page-content" class:full={page === "playground"}>
+      {#if page === "playground"}
+        <Playground />
+      {:else if page === "dashboard"}
         <Dashboard />
       {:else if page === "accounts"}
         <Accounts />
@@ -247,6 +253,12 @@
   .page-content {
     padding: 0 2rem 2rem 2rem;
     flex: 1;
+  }
+
+  .page-content.full {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .float-disclaimer {

@@ -144,6 +144,88 @@ export function getConfig(): Promise<AppConfig> {
 }
 
 // ---------------------------------------------------------------------------
+// Chat / Playground
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface ChatChunk {
+  content: string;
+  finishReason: string | null;
+}
+
+/**
+ * Stream a chat completion via SSE and call onChunk/onDone as data arrives.
+ * Returns an AbortController so the caller can cancel mid-stream.
+ */
+export function chatCompletionStream(
+  model: string,
+  messages: ChatMessage[],
+  onChunk: (text: string) => void,
+  onDone: (finishReason: string | null) => void,
+  onError: (err: Error) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages, stream: true }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finishReason: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") {
+            onDone(finishReason);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content ?? "";
+            finishReason = parsed.choices?.[0]?.finish_reason ?? finishReason;
+            if (content) onChunk(content);
+          } catch {
+            // skip malformed SSE data
+          }
+        }
+      }
+      onDone(finishReason);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      onError(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return controller;
+}
+
+// ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
 
