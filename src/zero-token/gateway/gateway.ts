@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import type { ChatCompletionRequest } from "../inference/types.js";
 import logger from "../logger.js";
@@ -270,9 +270,9 @@ export function createGateway(options: GatewayOptions = {}) {
         return c.notFound();
       }
 
-      // Try exact file match
+      // Try exact file match – ensure it's a file, not a directory
       const filePath = join(distPath, path === "/" ? "index.html" : path);
-      if (existsSync(filePath)) {
+      if (existsSync(filePath) && statSync(filePath).isFile()) {
         const ext = extname(filePath);
         const contentType = MIME[ext] || "application/octet-stream";
         const content = readFileSync(filePath);
