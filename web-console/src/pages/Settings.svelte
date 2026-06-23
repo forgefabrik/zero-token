@@ -24,7 +24,7 @@
   }
 
   async function copyConfigPath() {
-    await navigator.clipboard.writeText("~/.config/zero-token/config.json");
+    await navigator.clipboard.writeText("~/.config/nova/config.json");
     copied = true;
     window.setTimeout(() => (copied = false), 1500);
   }
@@ -97,9 +97,9 @@
       <div>
         <span class="eyebrow">Konfigurationsdatei</span>
         <h3>Änderungen lokal vornehmen</h3>
-        <p>Die Web-Konsole zeigt nur redigierte Werte. Änderungen erfolgen weiterhin in der lokalen JSON-Datei.</p>
+        <p>Neue Installationen verwenden Nova. Ein vorhandener Zero-Token-Datenordner wird automatisch weiterverwendet.</p>
       </div>
-      <button onclick={copyConfigPath}><code>~/.config/zero-token/config.json</code><span>{copied ? "Kopiert" : "Pfad kopieren"}</span></button>
+      <button onclick={copyConfigPath}><code>~/.config/nova/config.json</code><span>{copied ? "Kopiert" : "Pfad kopieren"}</span></button>
     </section>
 
     <div class="security-note"><strong>Sensible Werte geschützt</strong><span>Proxy-Passwörter, Cookies und Tokens werden von der Admin-API redigiert oder vollständig ausgelassen.</span></div>
