@@ -218,9 +218,43 @@ async function main(): Promise<void> {
         }
         process.exit(0);
       } else if (command[1] === "validate") {
-        logger.info("Accounts validate noch nicht implementiert (PR 4)");
-        console.error("  Sitzung validieren: noch nicht implementiert.");
-        process.exit(1);
+        const accountId = command[2];
+        const { listAccounts } = await import("./accounts/account-service.js");
+        const { validateAccountSession, validateAllSessions } = await import("./session/session-service.js");
+
+        if (accountId) {
+          const { getAccount } = await import("./accounts/account-repository.js");
+          const account = await getAccount(accountId);
+          if (!account) {
+            console.error(`  ✗ Account nicht gefunden: ${accountId}`);
+            process.exit(1);
+          }
+          console.error(`  Validiere Account ${accountId} …`);
+          const result = await validateAccountSession(account);
+          if (result.valid) {
+            console.error(`  ✓ Session gültig (${result.provider})`);
+            if (result.email) console.error(`    Email: ${result.email}`);
+            if (result.plan) console.error(`    Plan:  ${result.plan}`);
+          } else {
+            console.error(`  ✗ Session ungültig: ${result.error ?? result.status}`);
+          }
+        } else {
+          console.error("  Validiere alle Accounts …");
+          const results = await validateAllSessions();
+          if (results.length === 0) {
+            console.error("  Keine Accounts gespeichert.");
+            process.exit(0);
+          }
+          let valid = 0;
+          let invalid = 0;
+          for (const r of results) {
+            const icon = r.valid ? "✓" : "✗";
+            console.error(`    ${icon} ${r.accountId.padEnd(14)} ${r.provider.padEnd(12)} ${r.valid ? "gültig" : r.error ?? r.status}`);
+            if (r.valid) valid++; else invalid++;
+          }
+          console.error(`  ${valid} gültig, ${invalid} ungültig`);
+        }
+        process.exit(0);
       } else if (command[1] === "remove") {
         logger.info("Accounts remove noch nicht implementiert (PR 2)");
         console.error("  Konto entfernen: noch nicht implementiert.");
@@ -241,9 +275,34 @@ async function main(): Promise<void> {
       break;
 
     case "models":
-      logger.info("Modell-Befehle noch nicht implementiert (PR 4)");
-      console.error("  Modellverwaltung: noch nicht implementiert.");
-      process.exit(1);
+      if (command[1] === "list") {
+        const { listModels } = await import("./models/model-service.js");
+        const models = await listModels();
+        if (models.length === 0) {
+          console.error("  Keine Modelle gefunden.");
+          process.exit(0);
+        }
+        console.error(`  Verfügbare Modelle (${models.length}):`);
+        console.error("");
+        for (const m of models) {
+          const tags = [];
+          if (m.capabilities.vision) tags.push("vision");
+          if (m.capabilities.voice) tags.push("voice");
+          const tagStr = tags.length ? ` [${tags.join(", ")}]` : "";
+          console.error(`    ${m.id.padEnd(30)} ${m.provider.padEnd(12)}${tagStr}`);
+        }
+        process.exit(0);
+      } else if (command[1] === "refresh") {
+        console.error("  Aktualisiere Modellcache …");
+        const { refreshModels } = await import("./models/model-service.js");
+        const models = await refreshModels();
+        console.error(`  ✓ ${models.length} Modelle geladen.`);
+        process.exit(0);
+      } else {
+        console.error(`  Unbekannter Befehl: models ${command[1] ?? ""}`);
+        printHelp();
+        process.exit(1);
+      }
       break;
 
     case "usage":
