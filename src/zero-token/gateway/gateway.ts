@@ -4,6 +4,7 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import type { ChatCompletionRequest } from "../inference/types.js";
 import logger from "../logger.js";
+import { createLogRoutes } from "../logging/log-routes.js";
 
 export interface GatewayOptions {
   host?: string;
@@ -30,6 +31,9 @@ export function createGateway(options: GatewayOptions = {}) {
   if (opts.cors) {
     app.use("*", cors({ origin: "*", allowHeaders: ["Content-Type", "Authorization"] }));
   }
+
+  // Live logs (redacted by the central logger before they enter the ring buffer).
+  app.route("/api/logs", createLogRoutes());
 
   // Health
   app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
@@ -332,6 +336,7 @@ export async function startGateway(options: GatewayOptions = {}): Promise<{ clos
   console.error(`    GET  /v1/models       – Modelle auflisten`);
   console.error(`    POST /v1/chat/completions – Chat-Completion`);
   console.error(`    POST /v1/responses    – Responses API`);
+  console.error(`    GET  /api/logs/stream – Redigierte Live-Logs`);
 
   return {
     close: async () => {
