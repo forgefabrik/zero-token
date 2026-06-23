@@ -1,16 +1,37 @@
+import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 
-export function zeroTokenHome(): string {
-  const xdg = process.env.XDG_CONFIG_HOME;
-  if (xdg) {
-    return join(xdg, "zero-token");
+function configRoot(): string {
+  if (process.env.XDG_CONFIG_HOME) return resolve(process.env.XDG_CONFIG_HOME);
+  if (platform() === "win32") {
+    return resolve(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"));
   }
-  return join(homedir(), ".config", "zero-token");
+  return join(homedir(), ".config");
+}
+
+export function legacyZeroTokenHome(): string {
+  return join(configRoot(), "zero-token");
+}
+
+export function novaHome(): string {
+  const explicit = process.env.NOVA_HOME?.trim();
+  if (explicit) return resolve(explicit);
+
+  const preferred = join(configRoot(), "nova");
+  const legacy = legacyZeroTokenHome();
+
+  if (existsSync(preferred) || !existsSync(legacy)) return preferred;
+  return legacy;
+}
+
+/** @deprecated Use novaHome(). Kept for source compatibility. */
+export function zeroTokenHome(): string {
+  return novaHome();
 }
 
 export function accountsPath(): string {
-  return join(zeroTokenHome(), "accounts");
+  return join(novaHome(), "accounts");
 }
 
 export function accountFilePath(id: string): string {
@@ -18,21 +39,21 @@ export function accountFilePath(id: string): string {
 }
 
 export function configFilePath(): string {
-  return join(zeroTokenHome(), "config.json");
+  return join(novaHome(), "config.json");
 }
 
 export function modelsCachePath(): string {
-  return join(zeroTokenHome(), "models-cache.json");
+  return join(novaHome(), "models-cache.json");
 }
 
 export function exportsPath(): string {
-  return join(zeroTokenHome(), "exports");
+  return join(novaHome(), "exports");
 }
 
 export function auditLogPath(): string {
-  return join(zeroTokenHome(), "audit.json");
+  return join(novaHome(), "audit.json");
 }
 
 export function lockFilePath(): string {
-  return join(zeroTokenHome(), "storage.lock");
+  return join(novaHome(), "storage.lock");
 }
