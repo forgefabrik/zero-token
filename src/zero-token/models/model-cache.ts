@@ -14,7 +14,7 @@ export async function loadCache(): Promise<ModelsCache | null> {
   if (memoryCache) return memoryCache;
 
   try {
-    const data = await readJSON<ModelsCache>(modelsCachePath());
+    const data = await readStored<ModelsCache>(modelsCachePath());
     if (data) {
       memoryCache = {
         ...data,
@@ -41,7 +41,7 @@ export async function saveCache(models: ModelInfo[], ttlSeconds?: number): Promi
   memoryCache = cache;
 
   try {
-    await writeJSON(modelsCachePath(), cache);
+    await writeStored(modelsCachePath(), cache);
     logger.info({ count: models.length }, "Modellcache gespeichert");
   } catch (err) {
     logger.error({ err }, "Fehler beim Speichern des Modellcaches");
