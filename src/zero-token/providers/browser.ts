@@ -28,6 +28,49 @@ export interface BrowserLaunchConfig {
   loginTimeout?: number;
 }
 
+interface CdpVersionResponse {
+  webSocketDebuggerUrl?: string;
+}
+
+const CDP_DISCOVERY_TIMEOUT_MS = 5_000;
+const CDP_CONNECT_TIMEOUT_MS = 10_000;
+
+/**
+ * Chromium may advertise a loopback websocket URL from inside its own
+ * container. Rewrite it to the configured CDP host so another container can
+ * establish the websocket connection reliably.
+ */
+export async function resolveCdpWebSocketUrl(remoteUrl: string): Promise<string> {
+  const configured = new URL(remoteUrl);
+  if (configured.protocol === "ws:" || configured.protocol === "wss:") {
+    return configured.toString();
+  }
+  if (configured.protocol !== "http:" && configured.protocol !== "https:") {
+    throw new ProviderBrowserError(`Ungültiges CDP-Protokoll: ${configured.protocol}`);
+  }
+
+  const versionUrl = new URL("/json/version", configured);
+  const response = await fetch(versionUrl, {
+    signal: AbortSignal.timeout(CDP_DISCOVERY_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new ProviderBrowserError(
+      `CDP-Status unter ${versionUrl.toString()} antwortet mit HTTP ${response.status}.`,
+    );
+  }
+
+  const payload = (await response.json()) as CdpVersionResponse;
+  if (!payload.webSocketDebuggerUrl) {
+    throw new ProviderBrowserError("Chromium liefert keine webSocketDebuggerUrl.");
+  }
+
+  const advertised = new URL(payload.webSocketDebuggerUrl);
+  advertised.protocol = configured.protocol === "https:" ? "wss:" : "ws:";
+  advertised.hostname = configured.hostname;
+  advertised.port = configured.port;
+  return advertised.toString();
+}
+
 /**
  * Opens Chromium either by connecting to a remote CDP endpoint or by launching
  * a local process. Server deployments should configure NOVA_CDP_URL.
@@ -60,7 +103,14 @@ async function launchBrowser(config: BrowserLaunchConfig): Promise<Browser> {
   if (remoteUrl) {
     logger.info({ cdpUrl: remoteUrl }, "Verbinde zu Remote-Chromium über CDP …");
     try {
-      return await chromium.connectOverCDP(remoteUrl);
+      const websocketUrl = await resolveCdpWebSocketUrl(remoteUrl);
+      logger.info(
+        { cdpHost: new URL(websocketUrl).host },
+        "CDP-WebSocket aufgelöst; Verbindung wird hergestellt …",
+      );
+      return await chromium.connectOverCDP(websocketUrl, {
+        timeout: CDP_CONNECT_TIMEOUT_MS,
+      });
     } catch (err) {
       throw new ProviderBrowserError(
         `Keine Verbindung zum Remote-Chromium unter ${remoteUrl} möglich.`,
@@ -72,7 +122,9 @@ async function launchBrowser(config: BrowserLaunchConfig): Promise<Browser> {
   if (config.cdpPort) {
     logger.info({ cdpPort: config.cdpPort }, "Verbinde zu bestehendem Chrome über CDP …");
     try {
-      return await chromium.connectOverCDP(`http://127.0.0.1:${config.cdpPort}`);
+      return await chromium.connectOverCDP(`http://127.0.0.1:${config.cdpPort}`, {
+        timeout: CDP_CONNECT_TIMEOUT_MS,
+      });
     } catch (err) {
       throw new ProviderBrowserError(
         `Keine Verbindung zu Chrome auf Port ${config.cdpPort} möglich. ` +
