@@ -1,0 +1,8 @@
+{
+  "domain": "bkg.eysho.info",
+  "ipv4": "217.160.144.62",
+  "publicPorts": [80, 443],
+  "novaPort": 3000,
+  "remoteBrowserPath": "/remote-browser/",
+  "cdpExposure": "internal-only"
+}
