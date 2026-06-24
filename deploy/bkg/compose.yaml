@@ -1,0 +1,79 @@
+name: nova-bkg
+
+services:
+  nova:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NOVA_HOME: /data
+      NOVA_CDP_URL: http://remote-browser:9222
+      NOVA_REMOTE_LOGIN_VIEW_URL: https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify
+      ZT_LOG_LEVEL: ${NOVA_LOG_LEVEL:-info}
+    command:
+      - node
+      - dist/index.js
+      - start
+      - --host
+      - 0.0.0.0
+      - --port
+      - "3000"
+    volumes:
+      - nova_data:/data
+    expose:
+      - "3000"
+    depends_on:
+      remote-browser:
+        condition: service_healthy
+    networks:
+      - private
+
+  remote-browser:
+    build:
+      context: ./remote-browser
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    shm_size: 1gb
+    environment:
+      NOVA_BROWSER_WIDTH: ${NOVA_BROWSER_WIDTH:-1280}
+      NOVA_BROWSER_HEIGHT: ${NOVA_BROWSER_HEIGHT:-900}
+    volumes:
+      - remote_browser_data:/data
+    expose:
+      - "6080"
+      - "9222"
+    networks:
+      - private
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      nova:
+        condition: service_healthy
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+      NOVA_WEB_USER: ${NOVA_WEB_USER}
+      NOVA_WEB_PASSWORD_HASH: ${NOVA_WEB_PASSWORD_HASH}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - private
+
+networks:
+  private:
+    driver: bridge
+
+volumes:
+  nova_data:
+  remote_browser_data:
+  caddy_data:
+  caddy_config:
