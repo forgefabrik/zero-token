@@ -32,10 +32,6 @@ async function waitForQwenSession(
   throw new Error("Qwen-Login erkannt, aber Sessiondaten wurden nicht gesetzt.");
 }
 
-/**
- * Qwen-Web-Auth: Browser öffnen, auf manuellen Login warten,
- * Cookies und Token extrahieren.
- */
 export const auth: ProviderAuthFunction = async (config) => {
   let browserInstance: { close: () => Promise<void> } | null = null;
 
@@ -69,7 +65,12 @@ export const auth: ProviderAuthFunction = async (config) => {
     if (msg.includes("Browser konnte nicht geöffnet")) return { ok: false, reason: "browser-launch-failed" };
     return { ok: false, reason: "unknown-error" };
   } finally {
-    if (browserInstance) await browserInstance.close().catch(() => {});
+    // Bei CDP gehört Chromium dem gemeinsamen Remote-Browser. Die Verbindung
+    // darf nach dem Login nicht geschlossen werden, sonst verschwinden Session
+    // und spätere Modell-/Stream-Abfragen.
+    if (browserInstance && !config.cdpUrl) {
+      await browserInstance.close().catch(() => {});
+    }
   }
 };
 
