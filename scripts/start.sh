@@ -39,12 +39,7 @@ fi
 chmod 700 "$DEPLOY_DIR/state"
 
 compose config >/dev/null
-
-# Der Build-Helfer entscheidet anhand des Git-Diffs, welches Image wirklich
-# neu gebaut werden muss. Beim ersten Start werden beide Images gebaut.
 "$REPO_ROOT/scripts/build.sh" auto
-
-# Keine pauschale --build-Option: unveränderte Container behalten ihr Image.
 compose up -d --remove-orphans auth-init remote-browser nova caddy
 
 for service in remote-browser nova caddy; do
@@ -74,8 +69,10 @@ echo
 echo "Nova-Stack läuft vollständig."
 echo "Webseite: https://bkg.eysho.info/"
 echo "API-Basis: https://bkg.eysho.info/v1"
+echo "Modelle: https://bkg.eysho.info/v1/models"
+echo "API-Key-Datei: $DEPLOY_DIR/state/api.key"
 echo "Remote Browser: https://bkg.eysho.info/remote-browser/"
-echo "Zugangsdaten: $DEPLOY_DIR/state/admin.data"
+echo "Admin-Zugangsdaten: $DEPLOY_DIR/state/admin.data"
 echo "Interne CDP-Adresse: $NOVA_CDP_URL"
 echo
 compose ps
