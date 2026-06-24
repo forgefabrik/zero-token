@@ -9,9 +9,11 @@ services:
       NOVA_DOMAIN: bkg.eysho.info
     entrypoint:
       - /bin/sh
-      - /usr/local/bin/init-auth.sh
+      - -c
+      - /bin/sh /usr/local/bin/init-auth.sh && /bin/sh /usr/local/bin/init-api-key.sh
     volumes:
       - ./init-auth.sh:/usr/local/bin/init-auth.sh:ro
+      - ./init-api-key.sh:/usr/local/bin/init-api-key.sh:ro
       - ./state:/state
 
   nova:
@@ -24,6 +26,8 @@ services:
       NOVA_HOME: /data
       NOVA_CDP_URL: http://172.30.250.10:9222
       NOVA_REMOTE_LOGIN_VIEW_URL: https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify
+      NOVA_PUBLIC_BASE_URL: https://bkg.eysho.info
+      NOVA_API_KEY_FILE: /run/nova-state/api.key
       ZT_LOG_LEVEL: ${NOVA_LOG_LEVEL:-info}
     command:
       - node
@@ -35,9 +39,12 @@ services:
       - "3000"
     volumes:
       - nova_data:/data
+      - ./state:/run/nova-state:ro
     expose:
       - "3000"
     depends_on:
+      auth-init:
+        condition: service_completed_successfully
       remote-browser:
         condition: service_healthy
     networks:
