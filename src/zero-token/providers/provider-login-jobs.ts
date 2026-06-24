@@ -29,6 +29,11 @@ export interface ProviderLoginJob {
 
 const jobs = new Map<string, ProviderLoginJob>();
 const MAX_JOBS = 50;
+const ACTIVE_STATUSES: ProviderLoginJobStatus[] = [
+  "starting",
+  "waiting-for-user",
+  "saving",
+];
 
 function publicJob(job: ProviderLoginJob): ProviderLoginJob {
   return { ...job };
@@ -50,6 +55,12 @@ function trimJobs(): void {
   for (const job of removable.slice(0, jobs.size - MAX_JOBS)) jobs.delete(job.id);
 }
 
+function activeLoginJob(): ProviderLoginJob | undefined {
+  return [...jobs.values()]
+    .filter((job) => ACTIVE_STATUSES.includes(job.status))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
 export function listProviderLoginJobs(): ProviderLoginJob[] {
   return [...jobs.values()]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -63,14 +74,7 @@ export function getProviderLoginJob(id: string): ProviderLoginJob | undefined {
 
 export function removeProviderLoginJob(id: string): boolean {
   const job = jobs.get(id);
-  if (
-    !job ||
-    job.status === "starting" ||
-    job.status === "waiting-for-user" ||
-    job.status === "saving"
-  ) {
-    return false;
-  }
+  if (!job || ACTIVE_STATUSES.includes(job.status)) return false;
   return jobs.delete(id);
 }
 
@@ -82,6 +86,14 @@ export function startProviderLoginJob(
   if (!provider) throw new Error(`Unbekannter Provider: ${providerId}`);
   if (provider.authType !== "web-login") {
     throw new Error(`${provider.label} benötigt eine API-Konfiguration statt Browser-Login.`);
+  }
+
+  const active = activeLoginJob();
+  if (active) {
+    if (active.providerId === provider.id) return publicJob(active);
+    throw new Error(
+      `Es läuft bereits ein Remote-Login für ${active.providerLabel}. Schließe diesen zuerst ab.`,
+    );
   }
 
   const now = new Date().toISOString();
