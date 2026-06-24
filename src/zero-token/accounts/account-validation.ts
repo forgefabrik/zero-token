@@ -44,7 +44,26 @@ export function validateEmail(email: unknown): ValidationResult {
 
 export function validateCookies(cookies: unknown): ValidationResult {
   if (typeof cookies !== "string") return err("Cookies müssen ein String sein.");
-  if (cookies.length === 0) return err("Cookies dürfen nicht leer sein.");
+  return ok();
+}
+
+export function validateSessionCredentials(
+  cookies: unknown,
+  accessToken: unknown,
+  sessionStatus: unknown,
+): ValidationResult {
+  if (typeof cookies !== "string") return err("Cookies müssen ein String sein.");
+  if (accessToken !== undefined && accessToken !== null && typeof accessToken !== "string") {
+    return err("Access-Token muss ein String sein.");
+  }
+
+  const hasCookies = cookies.trim().length > 0;
+  const hasAccessToken = typeof accessToken === "string" && accessToken.trim().length > 0;
+  const isDraft = sessionStatus === "unknown" || sessionStatus === "login-required";
+
+  if (!hasCookies && !hasAccessToken && !isDraft) {
+    return err("Cookies oder Access-Token müssen vorhanden sein.");
+  }
   return ok();
 }
 
@@ -76,6 +95,7 @@ export function validateForSave(account: Record<string, unknown>): ValidationRes
     validateAccountLabel(account.label),
     validateEmail(account.email),
     validateCookies(account.cookies),
+    validateSessionCredentials(account.cookies, account.accessToken, account.sessionStatus),
     validateSessionStatus(account.sessionStatus),
     validatePriority(account.priority),
   );
