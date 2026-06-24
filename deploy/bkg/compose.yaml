@@ -21,7 +21,7 @@ services:
     environment:
       NODE_ENV: production
       NOVA_HOME: /data
-      NOVA_CDP_URL: http://remote-browser:9222
+      NOVA_CDP_URL: http://172.30.250.10:9222
       NOVA_REMOTE_LOGIN_VIEW_URL: https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify
       ZT_LOG_LEVEL: ${NOVA_LOG_LEVEL:-info}
     command:
@@ -57,7 +57,8 @@ services:
       - "6080"
       - "9222"
     networks:
-      - private
+      private:
+        ipv4_address: 172.30.250.10
 
   caddy:
     image: caddy:2.8-alpine
@@ -88,6 +89,9 @@ services:
 networks:
   private:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.250.0/24
 
 volumes:
   nova_data:
