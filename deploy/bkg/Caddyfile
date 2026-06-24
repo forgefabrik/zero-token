@@ -6,19 +6,39 @@
 bkg.eysho.info {
   encode zstd gzip
 
-  @protected not path /v1 /v1/*
-  basic_auth @protected {
-    {$NOVA_WEB_USER} {$NOVA_WEB_PASSWORD_HASH}
-  }
+  route {
+    @dashboard_playground {
+      path /v1/chat/completions
+      header Referer https://bkg.eysho.info/*
+    }
+    handle @dashboard_playground {
+      basic_auth {
+        {$NOVA_WEB_USER} {$NOVA_WEB_PASSWORD_HASH}
+      }
+      rewrite * /api/playground/chat
+      reverse_proxy nova:3000
+    }
 
-  @remote_browser path /remote-browser/*
-  handle @remote_browser {
-    uri strip_prefix /remote-browser
-    reverse_proxy remote-browser:6080
-  }
+    @public_api path /v1 /v1/*
+    handle @public_api {
+      reverse_proxy nova:3000
+    }
 
-  handle {
-    reverse_proxy nova:3000
+    @remote_browser path /remote-browser/*
+    handle @remote_browser {
+      basic_auth {
+        {$NOVA_WEB_USER} {$NOVA_WEB_PASSWORD_HASH}
+      }
+      uri strip_prefix /remote-browser
+      reverse_proxy remote-browser:6080
+    }
+
+    handle {
+      basic_auth {
+        {$NOVA_WEB_USER} {$NOVA_WEB_PASSWORD_HASH}
+      }
+      reverse_proxy nova:3000
+    }
   }
 
   header {
