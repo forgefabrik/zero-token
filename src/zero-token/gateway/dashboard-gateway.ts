@@ -4,11 +4,13 @@ import {
   type GatewayOptions,
 } from "./runtime-gateway.js";
 import { createPlaygroundRoutes } from "./playground-routes.js";
+import { apiRequestLogger } from "./api-request-logger.js";
 
 export type { GatewayOptions } from "./runtime-gateway.js";
 
 export function createGateway(options: GatewayOptions = {}) {
   const outer = new Hono();
+  outer.use("*", apiRequestLogger());
   outer.route("/api/playground", createPlaygroundRoutes());
 
   const runtime = createRuntimeGateway(options);
