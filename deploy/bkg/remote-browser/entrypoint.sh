@@ -8,7 +8,7 @@ DISPLAY_NUMBER="${DISPLAY#:}"
 rm -f "/tmp/.X${DISPLAY_NUMBER}-lock"
 rm -rf "/tmp/.X11-unix/X${DISPLAY_NUMBER}"
 
-# Use a temporary profile directory to avoid profile lock issues
+# Use a temporary profile directory to avoid profile lock issues.
 PROFILE_DIR="/tmp/chromium-profile-$$"
 mkdir -p "$PROFILE_DIR"
 
@@ -28,15 +28,13 @@ websockify \
   127.0.0.1:5900 \
   >/tmp/websockify.log 2>&1 &
 
-# Start socat to forward CDP from 0.0.0.0:9222 to ::1:9222 (IPv6 localhost)
-socat TCP-LISTEN:9222,reuseaddr,fork TCP6:[::1]:9222 &
-
-# Start chromium with CDP on IPv6 localhost (::1)
-chromium \
+# CDP is reachable only inside the private Compose network. Binding Chromium
+# directly avoids a second listener fighting for port 9222.
+exec chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
-  --remote-debugging-address=::1 \
+  --remote-debugging-address=0.0.0.0 \
   --remote-debugging-port=9222 \
   --remote-allow-origins=* \
   --user-data-dir="$PROFILE_DIR" \
