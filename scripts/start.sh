@@ -25,7 +25,6 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker ist nicht installiert." >&2
   exit 1
 fi
-
 if ! docker compose version >/dev/null 2>&1; then
   echo "Docker Compose ist nicht verfügbar." >&2
   exit 1
@@ -41,11 +40,13 @@ chmod 700 "$DEPLOY_DIR/state"
 
 compose config >/dev/null
 
-# Alle Dienste ausdrücklich starten. Ein gezieltes `up nova` startet Caddy nicht,
-# weil Caddy von Nova abhängt und nicht umgekehrt.
-compose up -d --build --remove-orphans auth-init remote-browser nova caddy
+# Der Build-Helfer entscheidet anhand des Git-Diffs, welches Image wirklich
+# neu gebaut werden muss. Beim ersten Start werden beide Images gebaut.
+"$REPO_ROOT/scripts/build.sh" auto
 
-# Auf die Container warten und bei Fehlern sofort die passenden Logs zeigen.
+# Keine pauschale --build-Option: unveränderte Container behalten ihr Image.
+compose up -d --remove-orphans auth-init remote-browser nova caddy
+
 for service in remote-browser nova caddy; do
   attempts=0
   while [ "$attempts" -lt 60 ]; do
@@ -72,6 +73,7 @@ done
 echo
 echo "Nova-Stack läuft vollständig."
 echo "Webseite: https://bkg.eysho.info/"
+echo "API-Basis: https://bkg.eysho.info/v1"
 echo "Remote Browser: https://bkg.eysho.info/remote-browser/"
 echo "Zugangsdaten: $DEPLOY_DIR/state/admin.data"
 echo "Interne CDP-Adresse: $NOVA_CDP_URL"
