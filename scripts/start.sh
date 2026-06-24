@@ -8,6 +8,8 @@ COMPOSE_FILE="$DEPLOY_DIR/compose.yaml"
 
 export NOVA_CDP_URL="http://172.30.250.10:9222"
 export NOVA_REMOTE_LOGIN_VIEW_URL="https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify"
+export NOVA_HOST_UID="$(id -u)"
+export NOVA_HOST_GID="$(id -g)"
 
 compose() {
   docker compose --project-directory "$DEPLOY_DIR" -f "$COMPOSE_FILE" "$@"
@@ -36,13 +38,16 @@ if [ ! -w "$DEPLOY_DIR/state" ]; then
   echo "Führe aus: sudo chown -R $(id -u):$(id -g) '$DEPLOY_DIR/state'" >&2
   exit 1
 fi
-chmod 700 "$DEPLOY_DIR/state"
+chmod 750 "$DEPLOY_DIR/state"
 
 compose config >/dev/null
 "$REPO_ROOT/scripts/build.sh" auto
-compose up -d --remove-orphans auth-init remote-browser nova
-# Caddy bind-mountet seine Konfiguration. Ein gezieltes Recreate lädt Änderungen
-# an Routing, TLS und Authentifizierung zuverlässig neu.
+
+# auth-init korrigiert bei jedem Start Besitzer und Rechte der bestehenden
+# Zugangsdaten. Danach wird Nova neu erstellt, damit es den Key neu einliest.
+compose up -d --remove-orphans --force-recreate auth-init
+compose up -d remote-browser
+compose up -d --force-recreate nova
 compose up -d --force-recreate caddy
 
 for service in remote-browser nova caddy; do
