@@ -4,13 +4,15 @@ import type { ProviderId, ProviderType } from "../accounts/account-types.js";
  * Browser launch/connection configuration shared by all providers.
  */
 export interface ProviderBrowserConfig {
-  /** CDP remote port (e.g. 9222). If set, connects to existing Chrome. */
+  /** Complete remote Chrome DevTools endpoint, preferred for server deployments. */
+  cdpUrl?: string;
+  /** CDP remote port on localhost (e.g. 9222), kept for local compatibility. */
   cdpPort?: number;
   /** Timeout for waiting on login, in ms (default: 300000 = 5 min) */
   loginTimeout?: number;
   /** Optional proxy URL for the browser */
   proxy?: string;
-  /** Whether to show the browser window (default: true for login) */
+  /** Whether to show the browser window (default: true for local login) */
   headless?: boolean;
 }
 
