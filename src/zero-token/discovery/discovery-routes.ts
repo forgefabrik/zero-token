@@ -26,6 +26,9 @@ const DECISIONS: CandidateDecision[] = [
   "rejected",
 ];
 
+type DecisionBody = { decision?: CandidateDecision; note?: string };
+type LoginBody = { providerId?: string };
+
 export function createDiscoveryRoutes(): Hono {
   const routes = new Hono();
   void startDiscoveryControl();
@@ -45,7 +48,9 @@ export function createDiscoveryRoutes(): Hono {
   routes.get("/control", async (c) => c.json(await getDiscoveryControlState()));
 
   routes.put("/control/config", async (c) => {
-    const body = await c.req.json<Partial<DiscoveryControlConfig>>().catch(() => ({}));
+    const body = await c.req.json<Partial<DiscoveryControlConfig>>().catch(
+      () => ({} as Partial<DiscoveryControlConfig>),
+    );
     try {
       return c.json(await configureDiscoveryControl(body));
     } catch (error) {
@@ -61,9 +66,7 @@ export function createDiscoveryRoutes(): Hono {
   });
 
   routes.post("/control/candidates/:id/decision", async (c) => {
-    const body = await c.req
-      .json<{ decision?: CandidateDecision; note?: string }>()
-      .catch(() => ({}));
+    const body = await c.req.json<DecisionBody>().catch(() => ({} as DecisionBody));
     if (!body.decision || !DECISIONS.includes(body.decision)) {
       return c.json({ error: "Ungültige Kandidatenentscheidung" }, 400);
     }
@@ -88,7 +91,7 @@ export function createDiscoveryRoutes(): Hono {
   });
 
   routes.post("/logins", async (c) => {
-    const body = await c.req.json<{ providerId?: string }>().catch(() => ({}));
+    const body = await c.req.json<LoginBody>().catch(() => ({} as LoginBody));
     if (!body.providerId) return c.json({ error: "providerId ist erforderlich" }, 400);
 
     try {
