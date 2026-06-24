@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import DiscoveryControlPanel from "./DiscoveryControlPanel.svelte";
-  import DiscoveryCandidateCard from "./DiscoveryCandidateCard.svelte";
+  import DiscoveryReviewQueue from "./DiscoveryReviewQueue.svelte";
   import {
-    decideCandidate,
     getDiscoveryControl,
     runDiscoveryControl,
     saveDiscoveryControl,
@@ -14,17 +13,11 @@
   let loading = $state(true);
   let busy = $state(false);
   let error = $state<string | null>(null);
-  let query = $state("");
-  let selected = $state<string | null>(null);
 
-  const visible = $derived(
-    (state?.reviews ?? []).filter((review) => {
-      const needle = query.trim().toLowerCase();
-      return !needle || review.label.toLowerCase().includes(needle) || review.providerId.toLowerCase().includes(needle) || review.models.some((model) => model.toLowerCase().includes(needle));
-    }),
-  );
   const valuable = $derived(state?.reviews.filter((item) => item.valuable).length ?? 0);
-  const accounts = $derived(state?.reviews.filter((item) => item.valuable && item.accountRequired).length ?? 0);
+  const accounts = $derived(
+    state?.reviews.filter((item) => item.valuable && item.accountRequired).length ?? 0,
+  );
   const streams = $derived(state?.reviews.filter((item) => item.streamPotential).length ?? 0);
 
   onMount(() => {
@@ -46,7 +39,9 @@
       state = await getDiscoveryControl();
       error = null;
     } catch (reason) {
-      if (showError) error = reason instanceof Error ? reason.message : "Control Center nicht erreichbar";
+      if (showError) {
+        error = reason instanceof Error ? reason.message : "Control Center nicht erreichbar";
+      }
     }
   }
 
@@ -65,18 +60,6 @@
   async function save(config: DiscoveryControlState["config"]) {
     state = await saveDiscoveryControl(config);
   }
-
-  async function choose(providerId: string, decision: string) {
-    selected = providerId;
-    try {
-      await decideCandidate(providerId, decision);
-      await refresh();
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : "Entscheidung fehlgeschlagen";
-    } finally {
-      selected = null;
-    }
-  }
 </script>
 
 <div class="page">
@@ -84,19 +67,28 @@
     <div>
       <span>Autonomous Discovery</span>
       <h2>Nova Control Center</h2>
-      <p>Öffentliche LLM-Webquellen finden, bewerten und erst nach deiner Freigabe für einen echten Adaptertest vormerken.</p>
+      <p>
+        Öffentliche LLM-Webquellen finden, bewerten und mit einem sichtbaren Browser auf echte
+        API- und Streamsignale prüfen.
+      </p>
     </div>
-    <b class:online={state?.config.enabled}>{state?.config.enabled ? "Automatik aktiv" : "Automatik pausiert"}</b>
+    <b class:online={state?.config.enabled}>
+      {state?.config.enabled ? "Automatik aktiv" : "Automatik pausiert"}
+    </b>
   </section>
 
-  {#if error}<div class="notice"><strong>Fehler</strong><span>{error}</span><button onclick={load}>Neu laden</button></div>{/if}
-  {#if state?.lastError}<div class="notice warning"><strong>Letzter Lauf</strong><span>{state.lastError}</span></div>{/if}
+  {#if error}
+    <div class="notice"><strong>Fehler</strong><span>{error}</span><button onclick={load}>Neu laden</button></div>
+  {/if}
+  {#if state?.lastError}
+    <div class="notice warning"><strong>Letzter Lauf</strong><span>{state.lastError}</span></div>
+  {/if}
 
   <section class="stats">
     <article><span>Kandidaten</span><strong>{state?.reviews.length ?? 0}</strong></article>
     <article><span>Lohnenswert</span><strong>{valuable}</strong></article>
     <article><span>Account nötig</span><strong>{accounts}</strong></article>
-    <article><span>Stream-Signale</span><strong>{streams}</strong></article>
+    <article><span>HTML-Stream-Signale</span><strong>{streams}</strong></article>
   </section>
 
   {#if loading || !state}
@@ -109,38 +101,31 @@
         <h3>Von der Website zur API</h3>
         <ol>
           <li><i>1</i><div><strong>Quelle finden</strong><small>Katalog oder öffentlicher Kandidat</small></div></li>
-          <li><i>2</i><div><strong>Webseite prüfen</strong><small>Login-, API- und Stream-Signale</small></div></li>
-          <li><i>3</i><div><strong>Freigeben</strong><small>Du entscheidest über Nutzen und Account</small></div></li>
-          <li><i>4</i><div><strong>Adapter testen</strong><small>Drei echte Streamläufe</small></div></li>
-          <li><i>5</i><div><strong>API aktivieren</strong><small>Erst nach bestandenem Test</small></div></li>
+          <li><i>2</i><div><strong>Webseite prüfen</strong><small>Login-, API- und HTML-Signale</small></div></li>
+          <li><i>3</i><div><strong>Sichtbar testen</strong><small>Du sendest selbst eine Testnachricht</small></div></li>
+          <li><i>4</i><div><strong>Adapter bauen</strong><small>Echte Endpunkte und Streamingformat</small></div></li>
+          <li><i>5</i><div><strong>API aktivieren</strong><small>Erst nach drei erfolgreichen Läufen</small></div></li>
         </ol>
-        <p><strong>Keine automatische Registrierung.</strong> Nova umgeht keine CAPTCHAs und aktiviert keine unbekannten Endpunkte blind.</p>
+        <p>
+          <strong>Datensparsam.</strong> Die Probe speichert nur Methode, bereinigten URL-Pfad,
+          Ressourcentyp, Status und Content-Type.
+        </p>
       </section>
     </div>
 
-    <div class="queue">
-      <div><span>Review Queue</span><h3>Gefundene Quellen</h3></div>
-      <input bind:value={query} placeholder="Kandidat oder Modell suchen" />
-    </div>
-
-    {#if visible.length === 0}
-      <div class="loading">Keine passenden Kandidaten. Starte einen Scan.</div>
-    {:else}
-      <div class="cards">
-        {#each visible as review (review.providerId)}
-          <DiscoveryCandidateCard {review} busy={selected === review.providerId} onDecision={choose} />
-        {/each}
-      </div>
-    {/if}
+    <DiscoveryReviewQueue reviews={state.reviews} onChanged={refresh} />
   {/if}
 
-  <footer>Kandidaten erscheinen erst nach einem real bestandenen Web-Stream-Adaptertest in Novas API.</footer>
+  <footer>
+    Ein beobachtetes Streamsignal ist noch kein aktiver Provider. Die Freigabe erfolgt erst nach
+    einem reproduzierbaren Adaptertest.
+  </footer>
 </div>
 
 <style>
   .page { padding: .5rem 0 2rem; }
   .hero { display:flex; justify-content:space-between; align-items:end; gap:1rem; padding:1.4rem; border:1px solid var(--border); border-radius:18px; background:linear-gradient(135deg,rgba(124,108,242,.2),rgba(19,28,46,.8)); }
-  .hero span,.pipeline>span,.queue span { color:var(--accent-secondary); text-transform:uppercase; letter-spacing:.12em; font-size:.68rem; font-weight:700; }
+  .hero span,.pipeline>span { color:var(--accent-secondary); text-transform:uppercase; letter-spacing:.12em; font-size:.68rem; font-weight:700; }
   h2 { margin:.35rem 0 0; font-size:clamp(1.8rem,4vw,2.6rem); }
   .hero p { max-width:720px; margin:.55rem 0 0; color:var(--muted); line-height:1.55; }
   .hero b { color:var(--muted); font-size:.72rem; white-space:nowrap; }
@@ -160,12 +145,10 @@
   li { display:flex; gap:.55rem; }
   li i { display:grid; place-items:center; width:24px; height:24px; flex:0 0 auto; border-radius:7px; background:rgba(124,108,242,.12); color:var(--accent-secondary); font-size:.66rem; font-style:normal; }
   li strong,li small { display:block; }
-  li strong { font-size:.7rem; } li small { margin-top:.15rem; color:var(--muted); font-size:.63rem; }
-  .pipeline p { padding:.65rem; border:1px solid rgba(255,209,102,.2); border-radius:9px; color:var(--muted); font-size:.65rem; line-height:1.45; }
-  .queue { display:flex; justify-content:space-between; align-items:end; gap:1rem; margin:1rem 0 .65rem; }
-  .queue input { width:min(380px,100%); min-height:40px; padding:0 .7rem; border:1px solid var(--border); border-radius:9px; background:var(--surface); color:var(--text); }
-  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:.75rem; }
+  li strong { font-size:.7rem; }
+  li small { margin-top:.15rem; color:var(--muted); font-size:.63rem; }
+  .pipeline p { padding:.65rem; border:1px solid rgba(67,217,163,.18); border-radius:9px; color:var(--muted); font-size:.65rem; line-height:1.45; }
   footer { line-height:1.5; }
   @media(max-width:900px){.control{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:650px){.hero,.queue{align-items:flex-start;flex-direction:column}.queue input{width:100%}.cards{grid-template-columns:1fr}}
+  @media(max-width:650px){.hero{align-items:flex-start;flex-direction:column}}
 </style>
