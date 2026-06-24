@@ -182,10 +182,11 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
         model: request.model,
         endpoint: "/api/organizations/:org/chat_conversations/:conversation/completion",
         status: completion.status,
+        responsePreview: completion.status >= 400 ? completion.body.slice(0, 300) : undefined,
         durationMs: Math.round(performance.now() - completionStarted),
       }, "Claude-API-Aufruf abgeschlossen");
 
-      if (completion.status === 401 || completion.status === 403) throw new InferenceAuthError("claude");
+      if (completion.status === 401) throw new InferenceAuthError("claude");
       if (completion.status === 408) throw new InferenceTimeoutError("claude");
       if (completion.status === 429) throw new InferenceRateLimitError("claude");
       if (completion.status < 200 || completion.status >= 300) {
