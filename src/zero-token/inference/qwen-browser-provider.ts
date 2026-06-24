@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { ChatGPTPlusAccount } from "../accounts/account-types.js";
-import { getAccount } from "../accounts/account-repository.js";
 import logger from "../logger.js";
+import { resolveProviderAccount } from "../providers/provider-account-resolver.js";
 import { getProviderBrowserPage } from "../providers/remote-browser-session.js";
 import { quotaManager } from "../quota/quota-manager.js";
 import { singleTextStream } from "./browser-stream-utils.js";
@@ -44,7 +43,13 @@ export class QwenBrowserProvider implements InferenceProvider {
   ): Promise<ReadableStream<ChatCompletionChunk>> {
     if (options?.signal?.aborted) throw new DOMException("Abgebrochen", "AbortError");
     await quotaManager.init();
-    const account = await this.resolveAccount(request.accountId, request.model);
+    const account = await resolveProviderAccount({
+      provider: "qwen",
+      modelId: request.model,
+      requestedAccountId: request.accountId,
+      configuredAccountId: this.accountId,
+    });
+    this.accountId = account.id;
     const prompt = lastUserPrompt(request);
 
     try {
@@ -212,31 +217,6 @@ export class QwenBrowserProvider implements InferenceProvider {
       await quotaManager.reportError(account.id, normalized);
       throw error;
     }
-  }
-
-  private async resolveAccount(
-    requestedId: string | undefined,
-    modelId: string,
-  ): Promise<ChatGPTPlusAccount> {
-    const id = requestedId ?? this.accountId;
-    if (!id) {
-      const selected = await quotaManager.acquireAccount({ provider: "qwen", modelId });
-      if (!selected) {
-        throw new InferenceError("Kein aktiver Qwen-Account verfügbar.", 503, "qwen");
-      }
-      this.accountId = selected.id;
-      return selected;
-    }
-
-    const account = await getAccount(id);
-    if (!account) throw new InferenceError(`Account nicht gefunden: ${id}`, 404, "qwen");
-    if (account.provider !== "qwen") {
-      throw new InferenceError(`Account gehört nicht zu Qwen: ${id}`, 400, "qwen");
-    }
-    if (!account.enabled || account.sessionStatus !== "valid") {
-      throw new InferenceError(`Account-Session nicht aktiv: ${id}`, 403, "qwen");
-    }
-    return account;
   }
 }
 

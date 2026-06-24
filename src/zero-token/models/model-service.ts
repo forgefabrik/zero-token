@@ -26,6 +26,38 @@ async function loadDiscoverer(provider: ProviderType): Promise<ModelDiscoverer |
   }
 }
 
+function validateDiscoveredModels(
+  provider: ProviderType,
+  models: ModelInfo[],
+): ModelInfo[] {
+  const seen = new Set<string>();
+
+  return models.map((model) => {
+    const id = model.id.trim();
+    if (!id) {
+      throw new Error(`Provider ${provider} lieferte ein Modell ohne ID.`);
+    }
+    if (model.provider !== provider) {
+      throw new Error(
+        `Provider ${provider} lieferte Modell ${id} mit falschem Provider ${model.provider}.`,
+      );
+    }
+
+    const normalizedId = id.toLowerCase();
+    if (seen.has(normalizedId)) {
+      throw new Error(`Provider ${provider} lieferte Modell ${id} mehrfach.`);
+    }
+    seen.add(normalizedId);
+
+    return {
+      ...model,
+      id,
+      name: model.name.trim() || id,
+      slug: model.slug.trim() || id,
+    };
+  });
+}
+
 export async function listModels(): Promise<ModelInfo[]> {
   const cached = await getCachedModels();
   if (cached) return cached;
@@ -59,11 +91,35 @@ export async function refreshModels(): Promise<ModelInfo[]> {
 
     for (const account of providerAccounts) {
       try {
-        const models = normalizeDiscoveredModels(
+        const models = validateDiscoveredModels(
           provider,
-          await discoverer(account.cookies, account.accessToken, account.userAgent),
+          normalizeDiscoveredModels(
+            provider,
+            await discoverer(account.cookies, account.accessToken, account.userAgent),
+          ),
         );
-        for (const model of models) result.set(`${provider}:${model.id}`, model);
+
+        for (const model of models) {
+          const key = `${provider}:${model.id.toLowerCase()}`;
+          const existing = result.get(key);
+          if (
+            existing &&
+            (existing.slug !== model.slug || existing.name !== model.name)
+          ) {
+            logger.warn(
+              {
+                provider,
+                modelId: model.id,
+                firstAccountModel: { name: existing.name, slug: existing.slug },
+                accountId: account.id,
+                currentAccountModel: { name: model.name, slug: model.slug },
+              },
+              "Provider-Accounts lieferten unterschiedliche Metadaten für dieselbe Modell-ID",
+            );
+          }
+          result.set(key, model);
+        }
+
         logger.info(
           { provider, accountId: account.id, count: models.length },
           "Verifizierte ausführbare Modelle entdeckt",

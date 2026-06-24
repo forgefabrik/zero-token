@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { ChatGPTPlusAccount } from "../accounts/account-types.js";
-import { getAccount } from "../accounts/account-repository.js";
+import { resolveProviderAccount } from "../providers/provider-account-resolver.js";
 import { getProviderBrowserPage } from "../providers/remote-browser-session.js";
 import { quotaManager } from "../quota/quota-manager.js";
 import {
@@ -79,7 +78,13 @@ export class GlmBrowserProvider implements InferenceProvider {
   ): Promise<ReadableStream<ChatCompletionChunk>> {
     if (options?.signal?.aborted) throw new DOMException("Abgebrochen", "AbortError");
     await quotaManager.init();
-    const account = await this.resolveAccount(request.accountId, request.model);
+    const account = await resolveProviderAccount({
+      provider: "glm",
+      modelId: request.model,
+      requestedAccountId: request.accountId,
+      configuredAccountId: this.accountId,
+    });
+    this.accountId = account.id;
 
     try {
       const page = await getProviderBrowserPage("https://chatglm.cn/");
@@ -201,30 +206,5 @@ export class GlmBrowserProvider implements InferenceProvider {
       await quotaManager.reportError(account.id, normalized);
       throw error;
     }
-  }
-
-  private async resolveAccount(
-    requestedId: string | undefined,
-    modelId: string,
-  ): Promise<ChatGPTPlusAccount> {
-    const id = requestedId ?? this.accountId;
-    if (!id) {
-      const selected = await quotaManager.acquireAccount({ provider: "glm", modelId });
-      if (!selected) {
-        throw new InferenceError("Kein aktiver GLM-Account verfügbar.", 503, "glm");
-      }
-      this.accountId = selected.id;
-      return selected;
-    }
-
-    const account = await getAccount(id);
-    if (!account) throw new InferenceError(`Account nicht gefunden: ${id}`, 404, "glm");
-    if (account.provider !== "glm") {
-      throw new InferenceError(`Account gehört nicht zu GLM: ${id}`, 400, "glm");
-    }
-    if (!account.enabled || account.sessionStatus !== "valid") {
-      throw new InferenceError(`Account-Session nicht aktiv: ${id}`, 403, "glm");
-    }
-    return account;
   }
 }

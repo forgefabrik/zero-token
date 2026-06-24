@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { ChatGPTPlusAccount } from "../accounts/account-types.js";
-import { getAccount } from "../accounts/account-repository.js";
 import logger from "../logger.js";
+import { resolveProviderAccount } from "../providers/provider-account-resolver.js";
 import { getProviderBrowserPage } from "../providers/remote-browser-session.js";
 import { quotaManager } from "../quota/quota-manager.js";
 import { extractTextFromEventStream, singleTextStream } from "./browser-stream-utils.js";
@@ -54,7 +53,13 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
   ): Promise<ReadableStream<ChatCompletionChunk>> {
     if (options?.signal?.aborted) throw new DOMException("Abgebrochen", "AbortError");
     await quotaManager.init();
-    const account = await this.resolveAccount(request.accountId, request.model);
+    const account = await resolveProviderAccount({
+      provider: "claude",
+      modelId: request.model,
+      requestedAccountId: request.accountId,
+      configuredAccountId: this.accountId,
+    });
+    this.accountId = account.id;
 
     try {
       const page = await getProviderBrowserPage("https://claude.ai/new");
@@ -202,20 +207,5 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
       await quotaManager.reportError(account.id, error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
-  }
-
-  private async resolveAccount(requestedId: string | undefined, modelId: string): Promise<ChatGPTPlusAccount> {
-    const id = requestedId ?? this.accountId;
-    if (!id) {
-      const selected = await quotaManager.acquireAccount({ provider: "claude", modelId });
-      if (!selected) throw new InferenceError("Kein aktiver Claude-Account verfügbar.", 503, "claude");
-      this.accountId = selected.id;
-      return selected;
-    }
-    const account = await getAccount(id);
-    if (!account) throw new InferenceError(`Account nicht gefunden: ${id}`, 404, "claude");
-    if (account.provider !== "claude") throw new InferenceError(`Account gehört nicht zu Claude: ${id}`, 400, "claude");
-    if (!account.enabled || account.sessionStatus !== "valid") throw new InferenceError(`Account-Session nicht aktiv: ${id}`, 403, "claude");
-    return account;
   }
 }
