@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Dashboard from "./pages/Dashboard.svelte";
-  import Playground from "./pages/Playground.svelte";
+  import Playground from "./pages/PlaygroundStable.svelte";
   import Providers from "./pages/Providers.svelte";
   import Discovery from "./pages/Discovery.svelte";
   import Agent from "./pages/Agent.svelte";
@@ -99,10 +99,10 @@
         <span class:online={online === true} class:offline={online === false} class="state-dot"></span>
         <div>
           <strong>{online === null ? "Prüfe Gateway" : online ? "Gateway online" : "Gateway offline"}</strong>
-          <span>127.0.0.1 · lokal</span>
+          <span>bkg.eysho.info · öffentlich</span>
         </div>
       </div>
-      <p>Inoffiziell · experimentell · lokal</p>
+      <p>Inoffiziell · experimentell · selbst gehostet</p>
     </div>
   </aside>
 
