@@ -6,6 +6,7 @@ import type { ChatCompletionRequest } from "../inference/types.js";
 import logger from "../logger.js";
 import { createLogRoutes } from "../logging/log-routes.js";
 import { createDiscoveryRoutes } from "../discovery/discovery-routes.js";
+import { createBrowserBridgeRoutes } from "../providers/browser-bridge-routes.js";
 
 export interface GatewayOptions {
   host?: string;
@@ -31,6 +32,7 @@ export function createGateway(options: GatewayOptions = {}) {
 
   app.route("/api/logs", createLogRoutes());
   app.route("/api/discovery", createDiscoveryRoutes());
+  app.route("/api/browser-bridge", createBrowserBridgeRoutes());
 
   app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
