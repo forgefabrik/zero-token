@@ -1,0 +1,50 @@
+name: Deployment Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/bkg/**"
+      - ".github/workflows/deployment-check.yml"
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/bkg/**"
+      - ".github/workflows/deployment-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Nova image
+        run: docker build --tag nova-bkg:check .
+
+      - name: Build remote browser image
+        run: docker build --tag nova-remote-browser:check deploy/bkg/remote-browser
+
+      - name: Validate Compose
+        env:
+          ACME_EMAIL: validation@example.invalid
+          NOVA_WEB_USER: nova
+          NOVA_WEB_PASSWORD_HASH: validation
+        run: docker compose -f deploy/bkg/compose.yaml config >/dev/null
+
+      - name: Validate Caddyfile
+        run: |
+          HASH="$(docker run --rm caddy:2.8-alpine caddy hash-password --plaintext validation)"
+          docker run --rm \
+            -e ACME_EMAIL=validation@example.invalid \
+            -e NOVA_WEB_USER=nova \
+            -e NOVA_WEB_PASSWORD_HASH="$HASH" \
+            -v "$PWD/deploy/bkg/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.8-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
