@@ -158,8 +158,8 @@ export interface ChatChunk {
 }
 
 /**
- * Stream a chat completion via SSE and call onChunk/onDone as data arrives.
- * Returns an AbortController so the caller can cancel mid-stream.
+ * Stream a chat completion through the internal dashboard route.
+ * Public /v1 clients still require the generated Nova API key.
  */
 export function chatCompletionStream(
   model: string,
@@ -172,7 +172,7 @@ export function chatCompletionStream(
 
   (async () => {
     try {
-      const res = await fetch("/v1/chat/completions", {
+      const res = await fetch("/api/playground/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model, messages, stream: true }),
