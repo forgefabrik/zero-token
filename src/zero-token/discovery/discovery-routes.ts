@@ -13,6 +13,12 @@ import {
   runProviderDiscovery,
 } from "./discovery-service.js";
 import {
+  getCandidateProbeJob,
+  listCandidateProbeJobs,
+  startCandidateProbeJob,
+  stopCandidateProbeJob,
+} from "./candidate-probe-runtime.js";
+import {
   getProviderLoginJob,
   listProviderLoginJobs,
   startProviderLoginJob,
@@ -28,6 +34,7 @@ const DECISIONS: CandidateDecision[] = [
 
 type DecisionBody = { decision?: CandidateDecision; note?: string };
 type LoginBody = { providerId?: string };
+type ProbeBody = { providerId?: string };
 
 export function createDiscoveryRoutes(): Hono {
   const routes = new Hono();
@@ -78,6 +85,37 @@ export function createDiscoveryRoutes(): Hono {
     } catch (error) {
       return c.json(
         { error: error instanceof Error ? error.message : "Kandidat nicht gefunden" },
+        404,
+      );
+    }
+  });
+
+  routes.get("/probes", (c) => c.json({ jobs: listCandidateProbeJobs() }));
+
+  routes.get("/probes/:id", (c) => {
+    const job = getCandidateProbeJob(c.req.param("id"));
+    return job ? c.json(job) : c.json({ error: "Probe-Job nicht gefunden" }, 404);
+  });
+
+  routes.post("/probes", async (c) => {
+    const body = await c.req.json<ProbeBody>().catch(() => ({} as ProbeBody));
+    if (!body.providerId) return c.json({ error: "providerId ist erforderlich" }, 400);
+    try {
+      return c.json(await startCandidateProbeJob(body.providerId), 202);
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "Probe konnte nicht gestartet werden" },
+        400,
+      );
+    }
+  });
+
+  routes.post("/probes/:id/stop", async (c) => {
+    try {
+      return c.json(await stopCandidateProbeJob(c.req.param("id")));
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "Probe konnte nicht beendet werden" },
         404,
       );
     }
