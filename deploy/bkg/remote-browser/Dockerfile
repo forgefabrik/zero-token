@@ -14,7 +14,6 @@ RUN apt-get update \
     websockify \
     x11vnc \
     xvfb \
-    socat \
   && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
