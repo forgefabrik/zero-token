@@ -21,7 +21,7 @@
     "openchamber",
     "accessibility"
   ],
-  "icon": "media/icon.png",
+
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -47,6 +47,11 @@
         "command": "zero-token-tts.showStatus",
         "category": "Zero-Token TTS",
         "title": "Server-Status anzeigen"
+      },
+      {
+        "command": "zero-token-tts.configureOpenChamber",
+        "category": "Zero-Token TTS",
+        "title": "In OpenChamber einrichten"
       }
     ],
     "keybindings": [

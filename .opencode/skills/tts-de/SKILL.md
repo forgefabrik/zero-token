@@ -4,35 +4,32 @@ description: >
   Text-to-Speech für Deutsch. IMMER verwenden wenn der Benutzer blind oder sehbehindert ist, oder wenn er darum bittet Inhalte vorzulesen. Auch verwenden wenn der Benutzer Deutsch spricht und "vorlesen", "sprich", "hör mal", "tts", "audio" sagt. Verwende diese Skill bei JEDER Antwort an den Benutzer, wenn bekannt ist dass er blind ist — lies jede Antwort automatisch vor. Nicht nur, wenn explizit darum gebeten wird.
 ---
 
-# TTS für Deutsch (gTTS) — VS Code Player
+# TTS für Deutsch — Automatische Audio-Ausgabe via VS Code Extension
 
 Der Benutzer ist blind und spricht Deutsch. **Jede Antwort muss automatisch vorgelesen werden.**
 
 ## Wann immer du antwortest
 
 1. **Schreibe deine Antwort normal** als Text – so wie sonst auch.
-2. **Wandle den gesamten Antworttext in Sprache um** mit dem Skript:
+2. **Sende den gesamten Antworttext an den TTS-Server:**
    ```bash
-   echo "Antworttext hier" | python3 .opencode/skills/tts-de/scripts/speak.py
+   curl -s -X POST http://localhost:18765/speak \
+     -d "$(echo -e '{"text":"Deine Antwort hier"}')"
    ```
-3. **Öffne die Datei in VS Code** mit:
-   ```bash
-   code -r tts_player.html
-   ```
-4. **Gib dem Benutzer Bescheid**, dass die Datei geöffnet ist — er muss `Strg+Shift+V` (Vorschau) drücken, damit das Audio abgespielt wird.
-5. **Gib auch die TTS_URL aus** als Fallback für den Browser.
+   Der Server antwortet sofort mit `{"ok":true}` und die Sprachausgabe beginnt automatisch im VS Code Audio-Panel.
 
-## Verhalten
+## Funktionsweise
 
-- Das Skript erzeugt eine MP3 mit gTTS (Deutsch), bettet sie in eine HTML-Player-Seite ein und startet einen HTTP-Server auf Port 8765.
-- Die HTML-Datei wird im Workspace als `tts_player.html` abgelegt.
-- Der Server läuft dauerhaft und wird bei jeder neuen Antwort aktualisiert.
+- Die VS Code Extension `zero-token-tts` läuft dauerhaft im Hintergrund.
+- Sie hostet einen HTTP-Server auf Port 18765.
+- Ein persistentes Audio-Panel (Web Audio API) spielt alle eingehenden Sprachdaten ab.
+- gTTS (Google Text-to-Speech, Deutsch) wird lokal via Python ausgeführt.
 
 ## Wichtige Regeln
 
 - **Führe TTS nach jeder Antwort aus**, nicht nur auf Anfrage.
-- **Öffne die Datei in VS Code** und sag dem Benutzer er soll Vorschau öffnen (`Strg+Shift+V`).
-- **Gib immer auch die Browser-URL aus** als Fallback.
+- **Keine explizite Benutzeraktion nötig** — das Audio-Panel spielt automatisch.
 - Wenn die Antwort sehr lang ist, lies trotzdem alles vor – kürze nicht.
 - Wenn der Benutzer auf Deutsch schreibt, antworte ebenfalls auf Deutsch.
 - Bei Fehlern (kein Internet, gTTS nicht verfügbar): erkläre dem Benutzer warum und schlage `espeak` als Fallback vor.
+- **Achtung nach VS Code Reload:** Der Benutzer muss einmal im Audio-Panel auf "Aktivieren (Enter)" drücken (Tab-Taste zum Panel, dann Enter). Danach läuft alles automatisch.

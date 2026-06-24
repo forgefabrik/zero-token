@@ -2,17 +2,17 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import { spawn, execSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 let ttsServer: http.Server | null = null;
 let serverPort = 18765;
 let statusBarItem: vscode.StatusBarItem | null = null;
-let clipboardPollTimer: ReturnType<typeof setInterval> | null = null;
-let lastClipboardText = '';
-let ttsPanel: vscode.WebviewPanel | null = null;
+let audioPanel: vscode.WebviewPanel | null = null;
 let outputChannel: vscode.OutputChannel;
+let audioFiles = new Map<string, Buffer>();
 
-// ─── gTTS helpers ────────────────────────────────────────────────────────────
+// ─── gTTS ────────────────────────────────────────────────────────────────────
 
 function checkGttsInstalled(): boolean {
   try {
@@ -23,7 +23,7 @@ function checkGttsInstalled(): boolean {
   }
 }
 
-async function generateSpeechGtts(text: string, lang: string): Promise<Buffer> {
+async function generateSpeechGtts(text: string): Promise<Buffer> {
   const ts = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const tmpScript = `/tmp/gtts-${ts}.py`;
   const tmpMp3 = `/tmp/gtts-${ts}.mp3`;
@@ -32,7 +32,7 @@ import sys
 sys.stdin.reconfigure(encoding='utf-8')
 text = sys.stdin.read()
 from gtts import gTTS
-tts = gTTS(text, lang='${lang}', slow=False)
+tts = gTTS(text, lang='de', slow=False)
 tts.save('${tmpMp3}')
 print('OK', flush=True)
 `;
@@ -45,7 +45,7 @@ print('OK', flush=True)
     proc.on('close', async (code) => {
       fs.promises.unlink(tmpScript).catch(() => {});
       if (code !== 0) {
-        reject(new Error(`gTTS Fehler (Exit ${code}): ${stderr.trim() || 'Unbekannter Fehler'}`));
+        reject(new Error(`gTTS Fehler (Exit ${code}): ${stderr.trim()}`));
         return;
       }
       try {
@@ -61,95 +61,192 @@ print('OK', flush=True)
   });
 }
 
-// ─── OpenAI-compatible TTS server ────────────────────────────────────────────
+// ─── Audio Panel (persistent webview with Web Audio) ────────────────────────
 
-function startTtsServer(port: number, serverLang: string) {
+function createAudioPanel(): vscode.WebviewPanel {
+  const panel = vscode.window.createWebviewPanel(
+    'zeroTokenAudio',
+    '🔊 TTS',
+    vscode.ViewColumn.Nine,
+    { enableScripts: true, retainContextWhenHidden: true }
+  );
+  panel.webview.html = getAudioPanelHtml();
+  panel.onDidDispose(() => { audioPanel = null; });
+  return panel;
+}
+
+function getAudioPanelHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; padding: 1rem; text-align: center;
+  }
+  button { padding: 1rem 2rem; font-size: 1.2rem; cursor: pointer; }
+  .status { font-size: 0.9rem; margin-top: 1rem; opacity: 0.7; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div>
+  <button id="activate">🔊 Aktivieren (Enter)</button>
+  <div class="status" id="status">Bereit</div>
+</div>
+<script>
+(function() {
+  const btn = document.getElementById('activate');
+  const statusEl = document.getElementById('status');
+  let audioCtx = null;
+  let isActive = false;
+
+  function log(msg) { statusEl.textContent = msg; }
+
+  async function unlock() {
+    if (isActive) return true;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      const buf = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf; src.connect(audioCtx.destination); src.start(0);
+      isActive = true;
+      btn.classList.add('hidden');
+      log('✅ Audio aktiviert');
+      return true;
+    } catch(e) { log('❌ ' + e.message); return false; }
+  }
+
+  // Unlock on ANY user interaction in this panel (keypress, click, etc.)
+  btn.onclick = unlock;
+  document.addEventListener('keydown', () => { if (!isActive) unlock(); });
+  document.addEventListener('click', () => { if (!isActive) unlock(); });
+
+  // Try immediately (might work if AudioContext is already allowed)
+  setTimeout(unlock, 300);
+
+  // Receive and play audio
+  window.addEventListener('message', async (event) => {
+    const msg = event.data;
+    if (msg.type !== 'speakAudio' || !msg.audioBase64) return;
+    if (!isActive && !(await unlock())) { log('❌ Bitte erst aktivieren'); return; }
+    try {
+      const data = Uint8Array.from(atob(msg.audioBase64), c => c.charCodeAt(0));
+      const audioBuf = await audioCtx.decodeAudioData(data.buffer);
+      const src = audioCtx.createBufferSource();
+      src.buffer = audioBuf;
+      src.connect(audioCtx.destination);
+      src.start(0);
+      log('🔊 Wiedergabe...');
+      src.onended = () => log('✅ Fertig');
+    } catch(e) { log('❌ Fehler: ' + e.message); }
+  });
+})();
+</script>
+</body>
+</html>`;
+}
+
+function ensureAudioPanel(): vscode.WebviewPanel {
+  if (!audioPanel) {
+    audioPanel = createAudioPanel();
+  }
+  return audioPanel;
+}
+
+function speakToPanel(text: string) {
+  const panel = ensureAudioPanel();
+  generateSpeechGtts(text).then((buffer) => {
+    const base64 = buffer.toString('base64');
+    panel.webview.postMessage({ type: 'speakAudio', audioBase64: base64 });
+  }).catch((e) => {
+    outputChannel.appendLine(`[TTS] gTTS Fehler: ${e.message}`);
+  });
+}
+
+// ─── HTTP Server ─────────────────────────────────────────────────────────────
+
+function startTtsServer(port: number) {
   stopTtsServer();
-
   ttsServer = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
     res.setHeader('Access-Control-Allow-Headers', '*');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
+    // Health
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', port, lang: serverLang }));
+      res.end(JSON.stringify({ status: 'ok', port }));
       return;
     }
 
+    // OpenAI-compatible TTS
     if (req.method === 'POST' && (req.url?.endsWith('/audio/speech') || req.url?.endsWith('/v1/audio/speech'))) {
       let body = '';
-      req.on('data', (chunk) => { body += chunk; });
+      req.on('data', (c) => body += c);
       req.on('end', async () => {
         try {
           const params = JSON.parse(body);
           const text = params.input || '';
-
-          if (!text.trim()) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'input text is required' }));
-            return;
-          }
-
-          outputChannel.appendLine(`[TTS] Speaking: "${text.slice(0, 80)}..." (lang=${serverLang})`);
-
-          const audioBuffer = await generateSpeechGtts(text, serverLang);
-
-          res.writeHead(200, {
-            'Content-Type': 'audio/mpeg',
-            'Content-Length': audioBuffer.length,
-          });
+          if (!text.trim()) { res.writeHead(400); res.end(JSON.stringify({ error: 'input required' })); return; }
+          const audioBuffer = await generateSpeechGtts(text);
+          res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': audioBuffer.length });
           res.end(audioBuffer);
-        } catch (e: any) {
-          outputChannel.appendLine(`[TTS] Error: ${e.message}`);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message }));
-        }
+        } catch (e: any) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
       });
       return;
     }
 
-    // OpenAI TTS API also uses GET for list voices
-    if (req.method === 'GET' && req.url?.endsWith('/models')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'tts-1' }, { id: 'tts-1-hd' }] }));
+    // Direct speak endpoint (used by assistant after each response)
+    if (req.method === 'POST' && req.url === '/speak') {
+      let body = '';
+      req.on('data', (c) => body += c);
+      req.on('end', async () => {
+        try {
+          const params = JSON.parse(body);
+          const text = params.text || '';
+          if (!text.trim()) { res.writeHead(400); res.end(JSON.stringify({ error: 'text required' })); return; }
+          outputChannel.appendLine(`[TTS] Speak: "${text.slice(0, 80)}..."`);
+          // Non-blocking: start playback, return immediately
+          speakToPanel(text);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'speaking' }));
+        } catch (e: any) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
+      });
       return;
     }
 
-    if (req.method === 'GET' && req.url?.includes('/audio/voices')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'nova' }, { id: 'alloy' }, { id: 'echo' }, { id: 'fable' }, { id: 'onyx' }, { id: 'shimmer' }] }));
+    // Serve generated audio files
+    if (req.method === 'GET' && req.url?.startsWith('/audio/') && req.url.endsWith('.mp3')) {
+      const id = req.url.slice(7, -4);
+      const data = audioFiles.get(id);
+      if (data) {
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': data.length });
+        res.end(data);
+        audioFiles.delete(id);
+      } else { res.writeHead(404); res.end('not found'); }
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
+    res.writeHead(404); res.end('not found');
   });
 
   ttsServer.listen(port, '0.0.0.0', () => {
-    outputChannel.appendLine(`[TTS] gTTS Server läuft auf http://localhost:${port}`);
-    outputChannel.appendLine(`[TTS] OpenAI-kompatibler Endpunkt: http://localhost:${port}/v1/audio/speech`);
+    outputChannel.appendLine(`[TTS] Server läuft auf Port ${port}`);
     updateStatusBar(true);
   });
-
-  ttsServer.on('error', (e: any) => {
-    outputChannel.appendLine(`[TTS] Server-Fehler: ${e.message}`);
-    updateStatusBar(false);
-  });
+  ttsServer.on('error', (e: any) => { outputChannel.appendLine(`[TTS] Server-Fehler: ${e.message}`); updateStatusBar(false); });
 }
 
 function stopTtsServer() {
-  if (ttsServer) {
-    ttsServer.close();
-    ttsServer = null;
-    outputChannel.appendLine('[TTS] Server gestoppt');
-  }
+  if (ttsServer) { ttsServer.close(); ttsServer = null; }
   updateStatusBar(false);
 }
 
@@ -158,233 +255,86 @@ function stopTtsServer() {
 function updateStatusBar(running: boolean) {
   if (!statusBarItem) return;
   statusBarItem.text = running ? '$(megaphone) TTS' : '$(megaphone) TTS (off)';
-  statusBarItem.tooltip = running
-    ? `Zero-Token TTS Server läuft auf Port ${serverPort}\nIn OpenChamber einstellen: openaiCompatibleUrl = http://localhost:${serverPort}`
-    : 'TTS Server gestoppt';
+  statusBarItem.tooltip = running ? `Zero-Token TTS auf Port ${serverPort}` : 'TTS Server gestoppt';
   statusBarItem.backgroundColor = running ? undefined : new vscode.ThemeColor('statusBarItem.warningBackground');
   statusBarItem.show();
 }
 
-// ─── Webview Panel (Read Aloud) ──────────────────────────────────────────────
+// ─── OpenChamber config ──────────────────────────────────────────────────────
 
-function getWebviewContent(text: string): string {
-  const safeText = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/"/g, '\\"');
-  return `<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body { font-family: -apple-system, sans-serif; padding: 1rem; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
-  .text { margin: 1rem 0; padding: 1rem; border: 1px solid var(--vscode-editorWidget-border); border-radius: 6px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
-  button { padding: 0.5rem 1rem; cursor: pointer; font-size: 1rem; margin: 0.25rem; }
-  .status { margin-top: 0.5rem; font-style: italic; color: var(--vscode-descriptionForeground); }
-</style>
-</head>
-<body>
-<h2>Sprachausgabe</h2>
-<div class="text" id="text">${safeText}</div>
-<button id="playBtn">▶ Abspielen</button>
-<button id="stopBtn">■ Stop</button>
-<div class="status" id="status"></div>
-<script>
-  const text = document.getElementById('text').textContent;
-  const status = document.getElementById('status');
-  let utterance = null;
-
-  document.getElementById('playBtn').onclick = () => {
-    window.speechSynthesis.cancel();
-    utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
-    utterance.rate = 0.9;
-    utterance.onstart = () => status.textContent = '🔊 Wiedergabe läuft...';
-    utterance.onend = () => status.textContent = '✅ Fertig';
-    utterance.onerror = (e) => status.textContent = '❌ Fehler: ' + e.error;
-    window.speechSynthesis.speak(utterance);
+async function configureOpenChamber(port: number) {
+  const sp = path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+  const settings = {
+    voiceProvider: 'openai-compatible',
+    openaiCompatibleUrl: `http://localhost:${port}`,
+    openaiCompatibleApiKey: 'not-required',
+    showMessageTTSButtons: true,
   };
-
-  document.getElementById('stopBtn').onclick = () => {
-    window.speechSynthesis.cancel();
-    status.textContent = '⏹ Gestoppt';
-  };
-
-  // Auto-play on load
-  setTimeout(() => document.getElementById('playBtn').click(), 500);
-</script>
-</body>
-</html>`;
-}
-
-function showTtsPanel(text: string) {
-  if (ttsPanel) {
-    ttsPanel.reveal();
-  } else {
-    ttsPanel = vscode.window.createWebviewPanel(
-      'zeroTokenTts',
-      'Zero-Token TTS',
-      vscode.ViewColumn.Beside,
-      { enableScripts: true }
-    );
-    ttsPanel.onDidDispose(() => { ttsPanel = null; });
-  }
-  ttsPanel.webview.html = getWebviewContent(text);
-}
-
-// ─── Clipboard reading ───────────────────────────────────────────────────────
-
-async function readClipboard(): Promise<string> {
   try {
-    return await vscode.env.clipboard.readText();
-  } catch {
-    return '';
-  }
-}
-
-function startClipboardPolling() {
-  stopClipboardPolling();
-  lastClipboardText = '';
-  clipboardPollTimer = setInterval(async () => {
-    try {
-      const text = await readClipboard();
-      if (text && text !== lastClipboardText && text.length > 3) {
-        lastClipboardText = text;
-        outputChannel.appendLine(`[Auto-Read] Neue Zwischenablage: "${text.slice(0, 60)}..."`);
-        showTtsPanel(text);
-      }
-    } catch {}
-  }, 2000);
-}
-
-function stopClipboardPolling() {
-  if (clipboardPollTimer) {
-    clearInterval(clipboardPollTimer);
-    clipboardPollTimer = null;
-  }
+    await fs.promises.mkdir(path.dirname(sp), { recursive: true });
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(await fs.promises.readFile(sp, 'utf8')); } catch {}
+    const merged = { ...existing, ...settings };
+    const tmp = `${sp}.tmp-${process.pid}-${Date.now()}`;
+    await fs.promises.writeFile(tmp, JSON.stringify(merged, null, 2), 'utf8');
+    await fs.promises.rename(tmp, sp);
+    return true;
+  } catch { return false; }
 }
 
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Zero-Token TTS');
-  outputChannel.appendLine('[TTS] Extension aktiviert');
+  outputChannel.appendLine('[TTS] Aktiviert');
 
   const config = vscode.workspace.getConfiguration('zero-token-tts');
   serverPort = config.get<number>('serverPort', 18765);
-  const language = config.get<string>('language', 'de');
   const serverEnabled = config.get<boolean>('serverEnabled', true);
-  const autoReadClipboard = config.get<boolean>('autoReadClipboard', false);
 
-  // Check gTTS
   const gttsOk = checkGttsInstalled();
   if (!gttsOk) {
-    vscode.window.showWarningMessage(
-      'gTTS ist nicht installiert. Bitte führe aus: pip install gtts',
-      'Installieren'
-    ).then(selection => {
-      if (selection === 'Installieren') {
-        const terminal = vscode.window.createTerminal('gTTS Install');
-        terminal.sendText('pip install gtts');
-        terminal.show();
-      }
-    });
+    vscode.window.showWarningMessage('gTTS nicht installiert. Bitte: pip install gtts', 'Installieren')
+      .then(s => { if (s === 'Installieren') { const t = vscode.window.createTerminal('gTTS'); t.sendText('pip install gtts'); t.show(); }});
   }
 
-  // Status bar
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.command = 'zero-token-tts.showStatus';
   context.subscriptions.push(statusBarItem);
 
-  // Start server
-  if (serverEnabled && gttsOk) {
-    startTtsServer(serverPort, language);
-  } else {
-    updateStatusBar(false);
-  }
+  // Create audio panel early so it's ready
+  if (gttsOk) audioPanel = createAudioPanel();
 
-  // Commands
+  if (serverEnabled && gttsOk) startTtsServer(serverPort);
+  else updateStatusBar(false);
+
   context.subscriptions.push(
     vscode.commands.registerCommand('zero-token-tts.readClipboard', async () => {
-      const text = await readClipboard();
-      if (!text.trim()) {
-        vscode.window.showInformationMessage('Zwischenablage ist leer');
-        return;
-      }
-      showTtsPanel(text);
+      const text = await vscode.env.clipboard.readText();
+      if (!text.trim()) { vscode.window.showInformationMessage('Zwischenablage leer'); return; }
+      speakToPanel(text);
     }),
-
-    vscode.commands.registerCommand('zero-token-tts.readSelection', () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showInformationMessage('Kein Editor geöffnet');
-        return;
-      }
-      const text = editor.document.getText(editor.selection);
-      if (!text.trim()) {
-        vscode.window.showInformationMessage('Kein Text ausgewählt');
-        return;
-      }
-      showTtsPanel(text);
+    vscode.commands.registerCommand('zero-token-tts.configureOpenChamber', async () => {
+      if (!ttsServer?.listening) { vscode.window.showWarningMessage('Server läuft nicht'); return; }
+      if (await configureOpenChamber(serverPort))
+        vscode.window.showInformationMessage('✅ OpenChamber konfiguriert! Webview neu laden für TTS-Buttons.');
+      else vscode.window.showErrorMessage('Fehler');
     }),
-
-    vscode.commands.registerCommand('zero-token-tts.openViewer', () => {
-      showTtsPanel('Gib hier deinen Text ein... (verwende "Zwischenablage vorlesen" oder "Auswahl vorlesen")');
-    }),
-
     vscode.commands.registerCommand('zero-token-tts.showStatus', () => {
       const active = ttsServer?.listening;
-      const msg = active
-        ? `✅ TTS Server läuft auf Port ${serverPort}\n\n` +
-          `In OpenChamber einstellen:\n` +
-          `• voiceProvider: "openai-compatible"\n` +
-          `• openaiCompatibleUrl: "http://localhost:${serverPort}"\n` +
-          `• openaiCompatibleApiKey: "not-required"\n` +
-          `• showMessageTTSButtons: true`
-        : '❌ TTS Server läuft nicht';
-      const autoMsg = autoReadClipboard ? '\n\n📋 Auto-Read: aktiviert' : '';
-      vscode.window.showInformationMessage(msg + autoMsg);
+      vscode.window.showInformationMessage(
+        active
+          ? `✅ TTS Server läuft auf Port ${serverPort}\nTTS-Panel bereit`
+          : '❌ TTS Server läuft nicht'
+      );
     })
   );
 
-  // Config change listener
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration('zero-token-tts')) return;
-      const newConfig = vscode.workspace.getConfiguration('zero-token-tts');
-      const newPort = newConfig.get<number>('serverPort', 18765);
-      const newLang = newConfig.get<string>('language', 'de');
-      const newServerEnabled = newConfig.get<boolean>('serverEnabled', true);
-
-      if (newPort !== serverPort || newServerEnabled !== serverEnabled) {
-        serverPort = newPort;
-        if (newServerEnabled && gttsOk) {
-          startTtsServer(serverPort, newLang);
-        } else {
-          stopTtsServer();
-        }
-      }
-
-      const newAutoRead = newConfig.get<boolean>('autoReadClipboard', false);
-      if (newAutoRead !== autoReadClipboard) {
-        if (newAutoRead) startClipboardPolling();
-        else stopClipboardPolling();
-      }
-    })
-  );
-
-  // Auto-read clipboard
-  if (autoReadClipboard) {
-    startClipboardPolling();
-  }
-
-  outputChannel.appendLine('[TTS] Extension bereit');
+  outputChannel.appendLine('[TTS] Bereit');
 }
 
 export function deactivate() {
   stopTtsServer();
-  stopClipboardPolling();
-  if (ttsPanel) {
-    ttsPanel.dispose();
-    ttsPanel = null;
-  }
+  if (audioPanel) audioPanel.dispose();
   outputChannel.dispose();
 }
