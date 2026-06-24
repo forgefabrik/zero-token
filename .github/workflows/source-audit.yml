@@ -1,0 +1,28 @@
+name: Source Audit
+
+on:
+  pull_request:
+    paths:
+      - ".source/**"
+      - ".github/workflows/source-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build manifest
+        run: |
+          find .source -type f -print | sort > source-files.txt
+          find .source -type f -exec sha256sum {} + | sort > source-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-audit
+          path: |
+            .source
+            source-files.txt
+            source-sha256.txt
+          include-hidden-files: true
