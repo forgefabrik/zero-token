@@ -6,3 +6,5 @@ dist/
 web-console/dist/
 coverage/
 .cache/
+deploy/bkg/state/admin.data
+deploy/bkg/state/caddy.env
