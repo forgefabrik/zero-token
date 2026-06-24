@@ -1,4 +1,4 @@
-import type { ProviderAuthFunction, ProviderAccountInfo } from "./provider-types.js";
+import type { ProviderAuthFunction } from "./provider-types.js";
 import {
   openProviderBrowser,
   waitForUrlLogin,
@@ -11,16 +11,13 @@ const AUTH_PATTERNS = ["/auth/", "/login", "/signin"];
 const COOKIE_NAMES = ["chatglm", "session", "token", "Authorization"];
 const TOKEN_KEYS = ["accessToken", "glm-token", "userToken"];
 
-/**
- * GLM-Web-Auth (ChatGLM): Browser öffnen, auf manuellen Login warten,
- * Cookies und Token extrahieren.
- */
 export const auth: ProviderAuthFunction = async (config) => {
   let browserInstance: { close: () => Promise<void> } | null = null;
 
   try {
     const { browser, page } = await openProviderBrowser({
       targetUrl: GLM_URL,
+      cdpUrl: config.cdpUrl,
       cdpPort: config.cdpPort,
       headless: config.headless,
       proxy: config.proxy,
@@ -45,6 +42,8 @@ export const auth: ProviderAuthFunction = async (config) => {
     if (msg.includes("Browser konnte nicht geöffnet")) return { ok: false, reason: "browser-launch-failed" };
     return { ok: false, reason: "unknown-error" };
   } finally {
-    if (browserInstance) await browserInstance.close().catch(() => {});
+    if (browserInstance && !config.cdpUrl) {
+      await browserInstance.close().catch(() => {});
+    }
   }
 };
