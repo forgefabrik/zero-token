@@ -4,12 +4,12 @@ set -eu
 WIDTH="${NOVA_BROWSER_WIDTH:-1280}"
 HEIGHT="${NOVA_BROWSER_HEIGHT:-900}"
 DISPLAY_NUMBER="${DISPLAY#:}"
+PROFILE_DIR="/data/chromium/profile"
 
 rm -f "/tmp/.X${DISPLAY_NUMBER}-lock"
 rm -rf "/tmp/.X11-unix/X${DISPLAY_NUMBER}"
-
-PROFILE_DIR="/tmp/chromium-profile-$$"
 mkdir -p "$PROFILE_DIR"
+rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonCookie" "$PROFILE_DIR/SingletonSocket"
 
 Xvfb "$DISPLAY" -screen 0 "${WIDTH}x${HEIGHT}x24" -ac +extension RANDR &
 openbox-session >/tmp/openbox.log 2>&1 &
