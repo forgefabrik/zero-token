@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Nova Browser Bridge",
+  "version": "0.1.0",
+  "description": "Übernimmt nach ausdrücklicher Bestätigung eine angemeldete Provider-Sitzung für Nova.",
+  "permissions": ["cookies", "tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://*.claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://chat.deepseek.com/*",
+    "https://grok.com/*",
+    "https://*.grok.com/*",
+    "https://www.perplexity.ai/*",
+    "https://*.perplexity.ai/*",
+    "https://chat.qwen.ai/*",
+    "https://www.qianwen.com/*",
+    "https://kimi.moonshot.cn/*",
+    "https://www.doubao.com/*",
+    "https://chatglm.cn/*",
+    "https://chat.z.ai/*",
+    "https://xiaomimo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Nova Browser Bridge",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
