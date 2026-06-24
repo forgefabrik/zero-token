@@ -3,7 +3,7 @@ set -eu
 
 cd "$(dirname "$0")"
 
-export NOVA_CDP_URL="http://remote-browser:9222"
+export NOVA_CDP_URL="http://172.30.250.10:9222"
 export NOVA_REMOTE_LOGIN_VIEW_URL="https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -32,5 +32,6 @@ echo "Nova wurde gestartet."
 echo "Webseite: https://bkg.eysho.info/"
 echo "Remote Browser: https://bkg.eysho.info/remote-browser/"
 echo "Zugangsdaten: $(pwd)/state/admin.data"
+echo "Interne CDP-Adresse: ${NOVA_CDP_URL}"
 echo
 docker compose ps
