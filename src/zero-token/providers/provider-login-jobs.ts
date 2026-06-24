@@ -153,7 +153,7 @@ async function executeLogin(
 
     updateJob(jobId, {
       status: "saving",
-      message: "Session wird lokal gespeichert …",
+      message: "Session wird gespeichert und Modelle werden synchronisiert …",
     });
     const descriptor = resolveProvider(providerType);
     const accountLabel =
@@ -173,16 +173,32 @@ async function executeLogin(
       lastValidatedAt: now,
     });
 
+    let modelCount = 0;
+    let modelSyncError: string | undefined;
+    try {
+      const { refreshModels } = await import("../models/model-service.js");
+      const models = await refreshModels();
+      modelCount = models.filter((model) => model.provider === providerType).length;
+    } catch (error) {
+      modelSyncError = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        { provider: providerType, accountId: account.id, error: modelSyncError },
+        "Account gespeichert, Modell-Synchronisierung fehlgeschlagen",
+      );
+    }
+
     updateJob(jobId, {
       status: "succeeded",
       accountId: account.id,
       accountLabel,
-      message: "Account wurde sicher lokal gespeichert.",
+      message: modelSyncError
+        ? "Account gespeichert; Modelle konnten noch nicht synchronisiert werden."
+        : `Account gespeichert; ${modelCount} ausführbare Modelle synchronisiert.`,
       completedAt: now,
     });
     logger.info(
-      { provider: providerType, accountId: account.id },
-      "Web-UX-Login abgeschlossen",
+      { provider: providerType, accountId: account.id, modelCount },
+      "Web-UX-Login und Modell-Synchronisierung abgeschlossen",
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
