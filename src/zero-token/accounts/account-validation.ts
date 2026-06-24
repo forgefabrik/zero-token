@@ -44,6 +44,7 @@ export function validateEmail(email: unknown): ValidationResult {
 
 export function validateCookies(cookies: unknown): ValidationResult {
   if (typeof cookies !== "string") return err("Cookies müssen ein String sein.");
+  if (cookies.length === 0) return err("Cookies dürfen nicht leer sein.");
   return ok();
 }
 
@@ -94,7 +95,6 @@ export function validateForSave(account: Record<string, unknown>): ValidationRes
     validateAccountId(account.id),
     validateAccountLabel(account.label),
     validateEmail(account.email),
-    validateCookies(account.cookies),
     validateSessionCredentials(account.cookies, account.accessToken, account.sessionStatus),
     validateSessionStatus(account.sessionStatus),
     validatePriority(account.priority),
