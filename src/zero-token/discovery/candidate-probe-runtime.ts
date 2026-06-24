@@ -21,6 +21,7 @@ interface Runtime {
 }
 
 const runtimes = new Map<string, Runtime>();
+const launchUrls = new Map<string, string>();
 const PROBE_TIMEOUT_MS = 10 * 60_000;
 
 async function finish(
@@ -31,10 +32,9 @@ async function finish(
   closeBrowser = true,
 ): Promise<void> {
   const runtime = runtimes.get(id);
-  if (runtime) {
-    runtimes.delete(id);
-    clearTimeout(runtime.timer);
-  }
+  runtimes.delete(id);
+  launchUrls.delete(id);
+  if (runtime) clearTimeout(runtime.timer);
   if (getStoredProbeJob(id)) finishStoredProbeJob(id, status, message, error);
   if (closeBrowser && runtime?.browser.isConnected()) {
     await runtime.browser.close().catch(() => undefined);
@@ -45,9 +45,10 @@ async function runProbe(id: string): Promise<void> {
   const job = getStoredProbeJob(id);
   if (!job) return;
 
+  const launchUrl = launchUrls.get(id) ?? job.homepage;
   let browser: Browser | undefined;
   try {
-    await inspectPublicSite(job.homepage);
+    await inspectPublicSite(launchUrl);
     browser = await chromium.launch({ headless: false });
     const timer = setTimeout(() => {
       void finish(id, "completed", "Probe-Zeit beendet. Technische Metadaten wurden gespeichert.");
@@ -80,7 +81,7 @@ async function runProbe(id: string): Promise<void> {
       }
     });
 
-    await page.goto(job.homepage, {
+    await page.goto(launchUrl, {
       waitUntil: "domcontentloaded",
       timeout: 45_000,
     });
@@ -117,14 +118,13 @@ export async function startCandidateProbeJob(providerId: string): Promise<Candid
   );
   if (!provider?.homepage) throw new Error("Kandidat besitzt keine öffentliche Homepage.");
 
-  const homepage = sanitizeProbeUrl(provider.homepage);
-  await validatePublicSiteUrl(homepage);
+  const validated = await validatePublicSiteUrl(provider.homepage);
   const now = new Date().toISOString();
   const job: CandidateProbeJob = {
     id: randomUUID(),
     providerId: provider.id,
     providerLabel: provider.label,
-    homepage,
+    homepage: sanitizeProbeUrl(validated.toString()),
     status: "starting",
     message: "Öffentliche Website wird geprüft und Browser wird gestartet …",
     createdAt: now,
@@ -134,6 +134,7 @@ export async function startCandidateProbeJob(providerId: string): Promise<Candid
     apiObserved: false,
     evidence: [],
   };
+  launchUrls.set(job.id, validated.toString());
   putProbeJob(job);
   void runProbe(job.id);
   return cloneProbeJob(job);
