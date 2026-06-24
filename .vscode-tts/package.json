@@ -1,0 +1,103 @@
+{
+  "name": "zero-token-tts",
+  "displayName": "Zero-Token TTS (Deutsch)",
+  "description": "OpenAI-kompatibler TTS-Server mit gTTS für Deutsch. Nahtlose Integration mit OpenChamber.",
+  "version": "0.1.0",
+  "publisher": "zero-token",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "tts",
+    "gtts",
+    "german",
+    "deutsch",
+    "openchamber",
+    "accessibility"
+  ],
+  "icon": "media/icon.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "zero-token-tts.readClipboard",
+        "category": "Zero-Token TTS",
+        "title": "Zwischenablage vorlesen"
+      },
+      {
+        "command": "zero-token-tts.readSelection",
+        "category": "Zero-Token TTS",
+        "title": "Auswahl vorlesen"
+      },
+      {
+        "command": "zero-token-tts.openViewer",
+        "category": "Zero-Token TTS",
+        "title": "TTS-Player öffnen"
+      },
+      {
+        "command": "zero-token-tts.showStatus",
+        "category": "Zero-Token TTS",
+        "title": "Server-Status anzeigen"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "zero-token-tts.readClipboard",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
+      },
+      {
+        "command": "zero-token-tts.readSelection",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t"
+      }
+    ],
+    "configuration": {
+      "title": "Zero-Token TTS",
+      "properties": {
+        "zero-token-tts.serverPort": {
+          "type": "number",
+          "default": 18765,
+          "description": "Port für den lokalen OpenAI-kompatiblen TTS-Server"
+        },
+        "zero-token-tts.language": {
+          "type": "string",
+          "default": "de",
+          "enum": ["de", "en", "fr", "es", "it", "pt", "nl", "pl", "ru", "tr", "zh-CN", "ja", "ko"],
+          "description": "Sprache für gTTS"
+        },
+        "zero-token-tts.serverEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "TTS-Server automatisch starten"
+        },
+        "zero-token-tts.autoReadClipboard": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatisch vorlesen wenn sich die Zwischenablage ändert"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify --main-fields=module,main",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch --sourcemap --main-fields=module,main",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.0"
+  }
+}
