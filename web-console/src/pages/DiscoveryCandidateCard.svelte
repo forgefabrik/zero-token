@@ -1,16 +1,26 @@
 <script lang="ts">
-  import type { DiscoveryControlState } from "../lib/discovery-control";
+  import CandidateProbePanel from "./CandidateProbePanel.svelte";
+  import type {
+    CandidateProbeJob,
+    DiscoveryControlState,
+  } from "../lib/discovery-control";
 
   type Review = DiscoveryControlState["reviews"][number];
 
   let {
     review,
+    probe,
     busy = false,
     onDecision,
+    onProbeStart,
+    onProbeStop,
   }: {
     review: Review;
+    probe?: CandidateProbeJob;
     busy?: boolean;
     onDecision: (providerId: string, decision: string) => void | Promise<void>;
+    onProbeStart: (providerId: string) => void | Promise<void>;
+    onProbeStop: (probeId: string) => void | Promise<void>;
   } = $props();
 
   function label(value: string): string {
@@ -43,8 +53,8 @@
 
   <div class="signals">
     <span class:yes={review.homepageReachable}>Webseite</span>
-    <span class:yes={review.streamPotential}>Stream-Signal</span>
-    <span class:yes={review.apiPotential}>API-Signal</span>
+    <span class:yes={review.streamPotential}>HTML-Stream-Signal</span>
+    <span class:yes={review.apiPotential}>HTML-API-Signal</span>
     <span class:alert={review.accountRequired}>Account {review.accountRequired ? "nötig" : "offen"}</span>
   </div>
 
@@ -58,6 +68,15 @@
   <ul>
     {#each review.reasons.slice(0, 5) as reason}<li>{reason}</li>{/each}
   </ul>
+
+  <CandidateProbePanel
+    providerId={review.providerId}
+    {probe}
+    {busy}
+    enabled={Boolean(review.homepage)}
+    onStart={onProbeStart}
+    onStop={onProbeStop}
+  />
 
   <div class="meta">Geprüft: {formatDate(review.lastCheckedAt)}</div>
 
