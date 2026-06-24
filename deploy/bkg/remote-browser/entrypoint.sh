@@ -4,15 +4,16 @@ set -eu
 WIDTH="${NOVA_BROWSER_WIDTH:-1280}"
 HEIGHT="${NOVA_BROWSER_HEIGHT:-900}"
 DISPLAY_NUMBER="${DISPLAY#:}"
-PROFILE_DIR="/data/chromium/profile"
 
 rm -f "/tmp/.X${DISPLAY_NUMBER}-lock"
 rm -rf "/tmp/.X11-unix/X${DISPLAY_NUMBER}"
-mkdir -p "$PROFILE_DIR"
-rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonCookie" "$PROFILE_DIR/SingletonSocket"
+mkdir -p /data/chromium/profiles
 
 Xvfb "$DISPLAY" -screen 0 "${WIDTH}x${HEIGHT}x24" -ac +extension RANDR &
 openbox-session >/tmp/openbox.log 2>&1 &
+if command -v tint2 >/dev/null 2>&1; then
+  tint2 >/tmp/tint2.log 2>&1 &
+fi
 x11vnc \
   -display "$DISPLAY" \
   -forever \
@@ -27,16 +28,4 @@ websockify \
   127.0.0.1:5900 \
   >/tmp/websockify.log 2>&1 &
 
-socat TCP-LISTEN:9222,reuseaddr,fork TCP:127.0.0.1:9223 >/tmp/socat-cdp.log 2>&1 &
-
-exec chromium \
-  --no-sandbox \
-  --disable-dev-shm-usage \
-  --disable-gpu \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9223 \
-  --remote-allow-origins=* \
-  --user-data-dir="$PROFILE_DIR" \
-  --window-size="${WIDTH},${HEIGHT}" \
-  --start-maximized \
-  about:blank
+exec python3 /profile-manager.py
