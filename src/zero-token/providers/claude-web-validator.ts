@@ -17,13 +17,34 @@ export async function validateSession(
     });
 
     if (response.status === 401 || response.status === 403) {
-      return { accountId: "", provider: "claude", valid: false, status: "expired", error: "Session abgelaufen" };
+      return {
+        accountId: "",
+        provider: "claude",
+        valid: false,
+        status: "expired",
+        error: "Session abgelaufen",
+      };
     }
     if (!response.ok) {
-      return { accountId: "", provider: "claude", valid: false, status: "error", error: `HTTP ${response.status}` };
+      return {
+        accountId: "",
+        provider: "claude",
+        valid: false,
+        status: "error",
+        error: `HTTP ${response.status}`,
+      };
     }
 
     const data = (await response.json()) as Record<string, unknown>;
+    const rawPlan = String(
+      data.plan ?? data.subscription ?? data.subscription_type ?? data.billing_type ?? "",
+    ).toLowerCase();
+    const plan = /pro|max|team|business|enterprise|paid|premium/.test(rawPlan)
+      ? "pro"
+      : rawPlan.includes("plus")
+        ? "plus"
+        : "free";
+
     return {
       accountId: "",
       provider: "claude",
@@ -32,9 +53,15 @@ export async function validateSession(
       userId: typeof data.id === "string" ? data.id : undefined,
       email: typeof data.email === "string" ? data.email : undefined,
       name: typeof data.name === "string" ? data.name : undefined,
-      plan: (data.plan as string) === "pro" ? "pro" : (data.plan as string) === "plus" ? "plus" : "unknown",
+      plan,
     };
   } catch (err) {
-    return { accountId: "", provider: "claude", valid: false, status: "error", error: `Netzwerkfehler: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      accountId: "",
+      provider: "claude",
+      valid: false,
+      status: "error",
+      error: `Netzwerkfehler: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }
