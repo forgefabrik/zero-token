@@ -7,6 +7,10 @@ services:
     working_dir: /
     environment:
       NOVA_DOMAIN: bkg.eysho.info
+      NOVA_STATE_DIR: /state
+      NOVA_HOST_UID: ${NOVA_HOST_UID:-1000}
+      NOVA_HOST_GID: ${NOVA_HOST_GID:-1000}
+      NOVA_RUNTIME_GID: "10001"
     entrypoint:
       - /bin/sh
       - -c
