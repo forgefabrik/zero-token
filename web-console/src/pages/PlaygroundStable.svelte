@@ -1,0 +1,12 @@
+<script lang="ts">
+import {chatCompletionStream,getModels} from "../lib/api";
+import type {ChatMessage,Model} from "../lib/api";
+type Msg=ChatMessage&{id:string;model?:string;provider?:string};
+let models=$state<Model[]>([]),selected=$state(""),messages=$state<Msg[]>([]),input=$state(""),partial=$state(""),running=$state(false),active:Model|null=$state(null),error=$state("");
+$effect(()=>{void getModels().then(v=>{models=v;if(!v.some(m=>m.id===selected))selected=v[0]?.id??""})});
+function send(){const text=input.trim(),m=models.find(x=>x.id===selected);if(!text||!m||running)return;messages=[...messages,{id:crypto.randomUUID(),role:"user",content:text}];const payload=messages.map(({role,content})=>({role,content}));input="";partial="";active={...m};running=true;error="";chatCompletionStream(m.id,payload,c=>partial+=c,()=>{if(partial)messages=[...messages,{id:crypto.randomUUID(),role:"assistant",content:partial,model:m.name,provider:m.provider}];partial="";active=null;running=false},e=>{error=e.message;partial="";active=null;running=false})}
+function key(e:KeyboardEvent){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}
+function reset(){messages=[];input="";partial="";active=null;running=false;error=""}
+</script>
+<div class="pg"><header><select bind:value={selected} disabled={running}>{#each models as m}<option value={m.id}>{m.name} ({m.provider})</option>{/each}</select><span>{models.length} Modelle</span><button onclick={reset}>Neu</button></header><main>{#each messages as m (m.id)}<article class={m.role}><b>{m.role==="assistant"?`${m.model} (${m.provider})`:"Du"}</b><pre>{m.content}</pre></article>{/each}{#if partial&&active}<article class="assistant"><b>{active.name} ({active.provider})</b><pre>{partial} ▊</pre></article>{/if}{#if error}<article class="error">{error}</article>{/if}</main><footer><textarea bind:value={input} onkeydown={key}></textarea><button onclick={send} disabled={running}>Senden</button></footer></div>
+<style>.pg{display:grid;grid-template-rows:auto 1fr auto;height:calc(100vh - 7rem)}header,footer{display:flex;gap:.6rem;padding:.8rem;border:1px solid var(--border)}main{overflow:auto;padding:1rem;border-inline:1px solid var(--border)}article{margin:.6rem 0;padding:.7rem;border:1px solid var(--border);border-radius:8px}.user{margin-left:20%}.assistant{margin-right:20%}pre{white-space:pre-wrap;font:inherit}textarea{flex:1}.error{color:#ff8b9d}</style>
