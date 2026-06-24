@@ -1,8 +1,15 @@
-import { chromium, type Browser, type Page } from "playwright";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "playwright";
+import logger from "../logger.js";
 import { resolveCdpWebSocketUrl } from "./browser.js";
 import { ensureProviderBrowserProfile } from "./provider-browser-profiles.js";
 
 const browserPromises = new Map<string, Promise<Browser>>();
+const configuredClaudeContexts = new WeakSet<BrowserContext>();
 
 async function connectRemoteBrowser(cdpUrl: string): Promise<Browser> {
   const cached = browserPromises.get(cdpUrl);
@@ -39,6 +46,39 @@ function belongsToOrigin(page: Page, origin: URL): boolean {
   }
 }
 
+async function configureClaudeRequestIdentity(
+  context: BrowserContext,
+): Promise<void> {
+  if (configuredClaudeContexts.has(context)) return;
+
+  const cookies = await context.cookies("https://claude.ai");
+  const deviceId = cookies.find(
+    (cookie) => cookie.name === "anthropic-device-id",
+  )?.value;
+  if (!deviceId) {
+    logger.warn(
+      { provider: "claude" },
+      "Claude-Profil enthält noch keine anthropic-device-id",
+    );
+    return;
+  }
+
+  await context.route("https://claude.ai/api/**", async (route) => {
+    const request = route.request();
+    await route.continue({
+      headers: {
+        ...request.headers(),
+        "anthropic-device-id": deviceId,
+      },
+    });
+  });
+  configuredClaudeContexts.add(context);
+  logger.info(
+    { provider: "claude", deviceIdSource: "browser-cookie" },
+    "Claude-API-Requests an persistente Geräte-ID gebunden",
+  );
+}
+
 /**
  * Returns a page from the isolated persistent profile for this provider.
  * Each provider uses its own Chromium process, user-data directory and CDP port.
@@ -55,6 +95,10 @@ export async function getProviderBrowserPage(originValue: string): Promise<Page>
     throw new Error(
       `Providerprofil ${profile.profile} besitzt keinen Browser-Kontext.`,
     );
+  }
+
+  if (profile.profile === "claude") {
+    await configureClaudeRequestIdentity(context);
   }
 
   const existing = context.pages().find((page) => belongsToOrigin(page, origin));
