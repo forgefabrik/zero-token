@@ -93,7 +93,7 @@ export function startProviderLoginJob(
     status: "starting",
     createdAt: now,
     updatedAt: now,
-    message: "Lokaler Browser wird geöffnet …",
+    message: "Remote-Browser auf dem Server wird vorbereitet …",
   };
   jobs.set(job.id, job);
   trimJobs();
@@ -109,7 +109,7 @@ async function executeLogin(
   try {
     updateJob(jobId, {
       status: "waiting-for-user",
-      message: "Bitte Anmeldung im geöffneten Browser abschließen.",
+      message: "Melde dich im geöffneten Remote-Browser-Tab an.",
     });
 
     const result = await providerLogin(providerType, {
@@ -177,13 +177,13 @@ async function executeLogin(
 function failureMessage(reason: ProviderLoginFailureReason): string {
   switch (reason) {
     case "browser-launch-failed":
-      return "Lokaler Browser konnte nicht geöffnet werden.";
+      return "Remote-Browser konnte nicht erreicht werden. Prüfe NOVA_CDP_URL und den Browser-Dienst.";
     case "login-timeout":
       return "Anmeldung wurde nicht rechtzeitig abgeschlossen.";
     case "plan-not-supported":
       return "Der erkannte Account-Plan wird nicht unterstützt.";
     case "session-extraction-failed":
-      return "Die lokale Sitzung konnte nicht ausgelesen werden.";
+      return "Die Remote-Sitzung konnte nicht ausgelesen werden.";
     case "user-cancelled":
       return "Anmeldung wurde abgebrochen.";
     case "configuration-required":
