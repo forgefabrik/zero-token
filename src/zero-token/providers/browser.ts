@@ -19,6 +19,7 @@ export class ProviderBrowserError extends Error {
 }
 
 export interface BrowserLaunchConfig {
+  cdpUrl?: string;
   cdpPort?: number;
   headless?: boolean;
   proxy?: string;
@@ -28,14 +29,12 @@ export interface BrowserLaunchConfig {
 }
 
 /**
- * Opens a Chromium browser — either via CDP connecting to an existing Chrome
- * instance, or by launching a new one — and navigates to the given URL.
+ * Opens Chromium either by connecting to a remote CDP endpoint or by launching
+ * a local process. Server deployments should configure NOVA_CDP_URL.
  */
 export async function openProviderBrowser(
   config: BrowserLaunchConfig,
 ): Promise<OpenBrowserResult> {
-  const timeout = config.loginTimeout ?? 300_000;
-
   try {
     const browser = await launchBrowser(config);
     const context = browser.contexts()[0] ?? (await browser.newContext());
@@ -57,6 +56,19 @@ export async function openProviderBrowser(
 }
 
 async function launchBrowser(config: BrowserLaunchConfig): Promise<Browser> {
+  const remoteUrl = config.cdpUrl?.trim() || process.env.NOVA_CDP_URL?.trim();
+  if (remoteUrl) {
+    logger.info({ cdpUrl: remoteUrl }, "Verbinde zu Remote-Chromium über CDP …");
+    try {
+      return await chromium.connectOverCDP(remoteUrl);
+    } catch (err) {
+      throw new ProviderBrowserError(
+        `Keine Verbindung zum Remote-Chromium unter ${remoteUrl} möglich.`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
   if (config.cdpPort) {
     logger.info({ cdpPort: config.cdpPort }, "Verbinde zu bestehendem Chrome über CDP …");
     try {
@@ -99,7 +111,6 @@ export async function waitForUrlLogin(
       return;
     }
 
-    // Check for "not found" or error pages
     if (url.includes("error") || url.includes("not-found")) {
       await page.waitForTimeout(500);
     }
@@ -115,7 +126,6 @@ export async function waitForUrlLogin(
 /**
  * Generic request-response-based login waiter.
  * Listens for a specific API response that indicates login success.
- * Falls back to URL-based detection after a timeout.
  */
 export async function waitForApiLogin(
   page: Page,
@@ -126,14 +136,12 @@ export async function waitForApiLogin(
   const start = Date.now();
   let resolved = false;
 
-  // Set up API response listener
   page.on("response", (response) => {
     if (response.url().includes(successApiPath) && response.status() === 200) {
       resolved = true;
     }
   });
 
-  // Wait for either API response or URL change
   while (Date.now() - start < timeout) {
     if (resolved) {
       await page.waitForTimeout(1000);
@@ -156,9 +164,7 @@ export async function waitForApiLogin(
   );
 }
 
-/**
- * Extracts cookies as a semicolon-separated header string.
- */
+/** Extracts cookies as a semicolon-separated header string. */
 export async function extractCookies(
   page: Page,
   relevantCookieNames: string[] = [],
@@ -176,7 +182,7 @@ export async function extractCookies(
   }
 
   const cookieMap = new Map<string, string>();
-  for (const c of (relevant.length ? relevant : browserCookies)) {
+  for (const c of relevant.length ? relevant : browserCookies) {
     cookieMap.set(c.name, c.value);
   }
 
@@ -185,9 +191,7 @@ export async function extractCookies(
     .join("; ");
 }
 
-/**
- * Extracts a value from localStorage by trying multiple possible keys.
- */
+/** Extracts a value from localStorage by trying multiple possible keys. */
 export async function extractLocalStorage(
   page: Page,
   possibleKeys: string[],
@@ -209,9 +213,7 @@ export async function extractLocalStorage(
   return null;
 }
 
-/**
- * Reads cookie value by name from the browser context.
- */
+/** Reads cookie value by name from the browser context. */
 export async function getCookieValue(
   page: Page,
   cookieName: string,
