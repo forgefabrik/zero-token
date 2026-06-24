@@ -48,7 +48,8 @@ DEFAULT_URLS = {
     "xiaomimo": "https://xiaomimo.com",
 }
 
-lock = threading.RLock()
+state_lock = threading.RLock()
+profile_locks = {name: threading.RLock() for name in PROFILE_PORTS}
 processes = {}
 
 
@@ -63,40 +64,98 @@ def profile_dir(profile: str) -> Path:
 
 
 def remove_singletons(path: Path) -> None:
-    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+    for name in (
+        "SingletonLock",
+        "SingletonCookie",
+        "SingletonSocket",
+        "LOCK",
+    ):
+        candidate = path / name
         try:
-            (path / name).unlink()
+            candidate.unlink()
         except FileNotFoundError:
             pass
+        except IsADirectoryError:
+            shutil.rmtree(candidate, ignore_errors=True)
+
+
+def repair_json_file(path: Path) -> None:
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        backup = path.with_name(f"{path.name}.corrupt-{int(time.time())}")
+        try:
+            path.replace(backup)
+            print(f"[profile-manager] moved corrupt profile file {path} -> {backup}", flush=True)
+        except OSError:
+            path.unlink(missing_ok=True)
+
+
+def prepare_profile(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, 0o700)
+    remove_singletons(path)
+    default_dir = path / "Default"
+    default_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(default_dir, 0o700)
+    repair_json_file(path / "Local State")
+    repair_json_file(default_dir / "Preferences")
+    probe = path / ".write-test"
+    probe.write_text("ok", encoding="utf-8")
+    probe.unlink(missing_ok=True)
 
 
 def is_running(proc) -> bool:
     return proc is not None and proc.poll() is None
 
 
-def stop_profile(profile: str) -> None:
-    with lock:
+def terminate_process_group(proc) -> None:
+    if not is_running(proc):
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError:
+        proc.terminate()
+    try:
+        proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            proc.kill()
+        proc.wait(timeout=3)
+
+
+def stop_profile_unlocked(profile: str) -> None:
+    with state_lock:
         state = processes.pop(profile, None)
     if not state:
         return
     for key in ("chromium", "socat"):
-        proc = state.get(key)
-        if not is_running(proc):
-            continue
-        proc.terminate()
-        try:
-            proc.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=3)
+        terminate_process_group(state.get(key))
+    time.sleep(0.35)
+    remove_singletons(profile_dir(profile))
+
+
+def stop_profile(profile: str) -> None:
+    profile = safe_profile(profile)
+    with profile_locks[profile]:
+        stop_profile_unlocked(profile)
 
 
 def wait_for_cdp(port: int, timeout: float = 20.0) -> bool:
     import urllib.request
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1.0) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/version", timeout=1.0
+            ) as response:
                 if response.status == 200:
                     return True
         except Exception:
@@ -104,16 +163,16 @@ def wait_for_cdp(port: int, timeout: float = 20.0) -> bool:
     return False
 
 
-def start_profile(profile: str, target_url: str = "") -> dict:
-    profile = safe_profile(profile)
-    with lock:
+def start_profile_unlocked(profile: str, target_url: str = "") -> dict:
+    with state_lock:
         current = processes.get(profile)
         if current and is_running(current.get("chromium")) and is_running(current.get("socat")):
             return status(profile)
+        if current:
+            processes.pop(profile, None)
 
     path = profile_dir(profile)
-    path.mkdir(parents=True, exist_ok=True)
-    remove_singletons(path)
+    prepare_profile(path)
 
     external_port = PROFILE_PORTS[profile]
     internal_port = external_port + 100
@@ -135,6 +194,7 @@ def start_profile(profile: str, target_url: str = "") -> dict:
         ],
         stdout=socat_log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
     chromium = subprocess.Popen(
         [
@@ -142,10 +202,15 @@ def start_profile(profile: str, target_url: str = "") -> dict:
             "--no-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-session-crashed-bubble",
+            "--hide-crash-restore-bubble",
             "--remote-debugging-address=127.0.0.1",
             f"--remote-debugging-port={internal_port}",
             "--remote-allow-origins=*",
             f"--user-data-dir={path}",
+            "--profile-directory=Default",
             f"--window-size={window_width},{window_height}",
             f"--window-position={x_pos},{y_pos}",
             f"--class=Nova-{profile}",
@@ -155,9 +220,10 @@ def start_profile(profile: str, target_url: str = "") -> dict:
         env={**os.environ, "DISPLAY": DISPLAY},
         stdout=chromium_log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
 
-    with lock:
+    with state_lock:
         processes[profile] = {
             "chromium": chromium,
             "socat": socat,
@@ -168,25 +234,36 @@ def start_profile(profile: str, target_url: str = "") -> dict:
         }
 
     if not wait_for_cdp(internal_port):
-        stop_profile(profile)
+        stop_profile_unlocked(profile)
         raise RuntimeError(f"Chromium CDP did not become ready for {profile}")
     return status(profile)
 
 
+def start_profile(profile: str, target_url: str = "") -> dict:
+    profile = safe_profile(profile)
+    with profile_locks[profile]:
+        return start_profile_unlocked(profile, target_url)
+
+
 def reset_profile(profile: str, target_url: str = "") -> dict:
     profile = safe_profile(profile)
-    stop_profile(profile)
-    path = profile_dir(profile)
-    if path.exists():
-        shutil.rmtree(path)
-    return start_profile(profile, target_url)
+    with profile_locks[profile]:
+        stop_profile_unlocked(profile)
+        path = profile_dir(profile)
+        if path.exists():
+            shutil.rmtree(path)
+        return start_profile_unlocked(profile, target_url)
 
 
 def status(profile: str) -> dict:
     profile = safe_profile(profile)
-    with lock:
+    with state_lock:
         state = processes.get(profile)
-    running = bool(state and is_running(state.get("chromium")) and is_running(state.get("socat")))
+    running = bool(
+        state
+        and is_running(state.get("chromium"))
+        and is_running(state.get("socat"))
+    )
     return {
         "profile": profile,
         "running": running,
@@ -269,6 +346,7 @@ def shutdown(*_args):
 
 if __name__ == "__main__":
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    os.chmod(DATA_ROOT, 0o700)
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     server = ThreadingHTTPServer(("0.0.0.0", MANAGER_PORT), Handler)
