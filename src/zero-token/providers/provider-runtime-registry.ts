@@ -18,8 +18,8 @@ const RUNTIME_ADAPTERS: Partial<Record<ProviderType, ProviderRuntimeAdapter>> = 
       return module.discoverModels;
     },
     createInferenceProvider: async (accountId?: string) => {
-      const module = await import("../inference/chatgpt-openclaw-provider.js");
-      return new module.ChatGPTOpenClawProvider(accountId);
+      const module = await import("../inference/chatgpt-direct-provider.js");
+      return new module.ChatGPTDirectProvider(accountId);
     },
   },
   claude: {
