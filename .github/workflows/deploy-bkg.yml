@@ -1,0 +1,79 @@
+name: Deploy bkg.eysho.info
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-bkg-eysho-info
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.BKG_SSH_KEY }}
+        run: |
+          test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 217.160.144.62 >> ~/.ssh/known_hosts
+
+      - name: Prepare production environment
+        env:
+          ACME_EMAIL: ${{ secrets.BKG_ACME_EMAIL }}
+          WEB_USER: ${{ secrets.BKG_WEB_USER }}
+          WEB_HASH: ${{ secrets.BKG_WEB_PASSWORD_HASH }}
+        run: |
+          test -n "$ACME_EMAIL"
+          test -n "$WEB_USER"
+          test -n "$WEB_HASH"
+          umask 077
+          {
+            printf 'ACME_EMAIL=%s\n' "$ACME_EMAIL"
+            printf 'NOVA_WEB_USER=%s\n' "$WEB_USER"
+            printf 'NOVA_WEB_PASSWORD_HASH=%s\n' "$WEB_HASH"
+            printf 'NOVA_LOG_LEVEL=info\n'
+            printf 'NOVA_BROWSER_WIDTH=1280\n'
+            printf 'NOVA_BROWSER_HEIGHT=900\n'
+          } > production.env
+
+      - name: Upload repository
+        env:
+          SSH_USER: ${{ secrets.BKG_SSH_USER }}
+        run: |
+          test -n "$SSH_USER"
+          tar --exclude=.git --exclude=node_modules --exclude=web-console/node_modules -czf - . \
+            | ssh "$SSH_USER@217.160.144.62" 'mkdir -p /opt/nova && tar -xzf - -C /opt/nova'
+          scp production.env "$SSH_USER@217.160.144.62:/opt/nova/deploy/bkg/.env"
+
+      - name: Start production stack
+        env:
+          SSH_USER: ${{ secrets.BKG_SSH_USER }}
+        run: |
+          ssh "$SSH_USER@217.160.144.62" \
+            'cd /opt/nova/deploy/bkg && docker compose --env-file .env up -d --build --remove-orphans && docker compose --env-file .env ps'
+
+      - name: Verify HTTPS
+        env:
+          WEB_USER: ${{ secrets.BKG_WEB_USER }}
+          WEB_PASSWORD: ${{ secrets.BKG_WEB_PASSWORD }}
+        run: |
+          test -n "$WEB_PASSWORD"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              --user "$WEB_USER:$WEB_PASSWORD" \
+              https://bkg.eysho.info/health; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
