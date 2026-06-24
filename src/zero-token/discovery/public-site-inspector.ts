@@ -34,7 +34,7 @@ function isPrivateIpv6(address: string): boolean {
   );
 }
 
-async function assertPublicHttpsUrl(value: string): Promise<URL> {
+export async function validatePublicSiteUrl(value: string): Promise<URL> {
   const url = new URL(value);
   if (url.protocol !== "https:") throw new Error("Nur öffentliche HTTPS-Webseiten sind erlaubt.");
 
@@ -98,7 +98,7 @@ export interface PublicSiteInspection {
 }
 
 export async function inspectPublicSite(value: string): Promise<PublicSiteInspection> {
-  let current = await assertPublicHttpsUrl(value);
+  let current = await validatePublicSiteUrl(value);
 
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const response = await fetch(current, {
@@ -114,7 +114,7 @@ export async function inspectPublicSite(value: string): Promise<PublicSiteInspec
       const location = response.headers.get("location");
       if (!location) throw new Error("Weiterleitung ohne Ziel.");
       if (redirect === MAX_REDIRECTS) throw new Error("Zu viele Weiterleitungen.");
-      current = await assertPublicHttpsUrl(new URL(location, current).toString());
+      current = await validatePublicSiteUrl(new URL(location, current).toString());
       continue;
     }
 
