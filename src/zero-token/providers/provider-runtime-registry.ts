@@ -22,6 +22,18 @@ const RUNTIME_ADAPTERS: Partial<Record<ProviderType, ProviderRuntimeAdapter>> = 
       return new module.ChatGPTOpenClawProvider(accountId);
     },
   },
+  claude: {
+    provider: "claude",
+    publicApiId: "claude-web",
+    loadModelDiscoverer: async () => {
+      const module = await import("./claude-web-models.js");
+      return module.discoverModels;
+    },
+    createInferenceProvider: async (accountId?: string) => {
+      const module = await import("../inference/claude-browser-provider.js");
+      return new module.ClaudeBrowserProvider(accountId);
+    },
+  },
   qwen: {
     provider: "qwen",
     publicApiId: "qwen-web",
