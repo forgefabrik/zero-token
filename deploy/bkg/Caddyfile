@@ -6,7 +6,8 @@
 bkg.eysho.info {
   encode zstd gzip
 
-  basic_auth {
+  @protected not path /v1 /v1/*
+  basic_auth @protected {
     {$NOVA_WEB_USER} {$NOVA_WEB_PASSWORD_HASH}
   }
 
