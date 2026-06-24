@@ -1,1 +1,1 @@
-export * from "./dashboard-gateway.js";
+export * from "./complete-gateway.js";
