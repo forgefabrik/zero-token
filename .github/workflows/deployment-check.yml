@@ -65,6 +65,9 @@ jobs:
           mkdir -p "$STATE_DIR"
           docker run --rm \
             -e NOVA_DOMAIN=bkg.eysho.info \
+            -e NOVA_HOST_UID="$(id -u)" \
+            -e NOVA_HOST_GID="$(id -g)" \
+            -e NOVA_RUNTIME_GID=10001 \
             -v "$PWD/deploy/bkg/init-auth.sh:/usr/local/bin/init-auth.sh:ro" \
             -v "$PWD/deploy/bkg/init-api-key.sh:/usr/local/bin/init-api-key.sh:ro" \
             -v "$STATE_DIR:/state" \
