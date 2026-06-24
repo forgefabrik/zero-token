@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, Page } from "playwright";
 import logger from "../logger.js";
@@ -35,13 +37,37 @@ interface CdpVersionResponse {
 const CDP_DISCOVERY_TIMEOUT_MS = 5_000;
 const CDP_CONNECT_TIMEOUT_MS = 10_000;
 
+async function resolveCdpNetworkUrl(remoteUrl: string): Promise<URL> {
+  const resolved = new URL(remoteUrl);
+  const hostname = resolved.hostname;
+
+  if (hostname === "localhost" || isIP(hostname)) {
+    return resolved;
+  }
+
+  try {
+    const result = await lookup(hostname, { family: 4 });
+    resolved.hostname = result.address;
+    logger.debug(
+      { cdpService: hostname, cdpAddress: result.address },
+      "CDP-Dienstname über Docker-DNS aufgelöst",
+    );
+    return resolved;
+  } catch (error) {
+    throw new ProviderBrowserError(
+      `CDP-Host ${hostname} konnte nicht aufgelöst werden.`,
+      error instanceof Error ? error : undefined,
+    );
+  }
+}
+
 /**
  * Chromium may advertise a loopback websocket URL from inside its own
- * container. Rewrite it to the configured CDP host so another container can
- * establish the websocket connection reliably.
+ * container. Resolve Docker service names to an IP accepted by Chromium's
+ * DevTools host-header validation and rewrite the advertised websocket URL.
  */
 export async function resolveCdpWebSocketUrl(remoteUrl: string): Promise<string> {
-  const configured = new URL(remoteUrl);
+  const configured = await resolveCdpNetworkUrl(remoteUrl);
   if (configured.protocol === "ws:" || configured.protocol === "wss:") {
     return configured.toString();
   }
