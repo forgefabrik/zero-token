@@ -15,7 +15,12 @@ function isLoopback(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
-function trustedWebOrigin(requestUrl: string, originHeader: string | undefined, hostHeader: string | undefined, forwardedProto?: string): boolean {
+function trustedWebOrigin(
+  requestUrl: string,
+  originHeader: string | undefined,
+  hostHeader: string | undefined,
+  forwardedProto?: string,
+): boolean {
   if (!originHeader || !hostHeader) return false;
   try {
     const origin = new URL(originHeader);
@@ -34,19 +39,31 @@ export function createBrowserBridgeRoutes(): Hono {
 
   routes.post("/jobs", async (c) => {
     const host = c.req.header("x-forwarded-host") ?? c.req.header("host");
-    if (!trustedWebOrigin(c.req.url, c.req.header("origin"), host, c.req.header("x-forwarded-proto"))) {
+    if (
+      !trustedWebOrigin(
+        c.req.url,
+        c.req.header("origin"),
+        host,
+        c.req.header("x-forwarded-proto"),
+      )
+    ) {
       return c.json(
         { error: "Browser-Bridge-Login benötigt dieselbe sichere Web-Origin (HTTPS; lokal auch HTTP)." },
         403,
       );
     }
 
-    const body = await c.req.json<{ providerId?: string }>().catch(() => ({}));
+    const body = await c.req
+      .json<{ providerId?: string }>()
+      .catch(() => ({} as { providerId?: string }));
     if (!body.providerId) return c.json({ error: "providerId ist erforderlich" }, 400);
     try {
       return c.json(createBrowserBridgeJob(body.providerId), 201);
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "Loginjob konnte nicht erstellt werden" }, 400);
+      return c.json(
+        { error: error instanceof Error ? error.message : "Loginjob konnte nicht erstellt werden" },
+        400,
+      );
     }
   });
 
@@ -58,7 +75,14 @@ export function createBrowserBridgeRoutes(): Hono {
 
   routes.post("/jobs/:id/complete", async (c) => {
     const host = c.req.header("x-forwarded-host") ?? c.req.header("host");
-    if (!trustedWebOrigin(c.req.url, c.req.header("origin"), host, c.req.header("x-forwarded-proto"))) {
+    if (
+      !trustedWebOrigin(
+        c.req.url,
+        c.req.header("origin"),
+        host,
+        c.req.header("x-forwarded-proto"),
+      )
+    ) {
       return c.json({ error: "Unsichere Browser-Bridge-Origin" }, 403);
     }
 
@@ -71,7 +95,10 @@ export function createBrowserBridgeRoutes(): Hono {
     try {
       return c.json(await completeBrowserBridgeJob(c.req.param("id"), token, body.session));
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "Sitzung konnte nicht übernommen werden" }, 400);
+      return c.json(
+        { error: error instanceof Error ? error.message : "Sitzung konnte nicht übernommen werden" },
+        400,
+      );
     }
   });
 
