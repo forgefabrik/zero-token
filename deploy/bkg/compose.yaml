@@ -1,6 +1,18 @@
 name: nova-bkg
 
 services:
+  auth-init:
+    image: caddy:2.8-alpine
+    restart: "no"
+    environment:
+      NOVA_DOMAIN: bkg.eysho.info
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/init-auth.sh
+    volumes:
+      - ./init-auth.sh:/usr/local/bin/init-auth.sh:ro
+      - ./state:/state
+
   nova:
     build:
       context: ../..
@@ -51,18 +63,23 @@ services:
     image: caddy:2.8-alpine
     restart: unless-stopped
     depends_on:
+      auth-init:
+        condition: service_completed_successfully
       nova:
         condition: service_healthy
     environment:
-      ACME_EMAIL: ${ACME_EMAIL}
-      NOVA_WEB_USER: ${NOVA_WEB_USER}
-      NOVA_WEB_PASSWORD_HASH: ${NOVA_WEB_PASSWORD_HASH}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@eysho.info}
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/caddy-entrypoint.sh
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
+      - ./state:/state:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
