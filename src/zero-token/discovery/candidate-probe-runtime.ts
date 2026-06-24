@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chromium, type Browser } from "playwright";
 import logger from "../logger.js";
 import { getDiscoverySnapshot } from "./discovery-service.js";
+import { getCandidateProbeCapability } from "./candidate-probe-capability.js";
 import { sanitizeProbeUrl } from "./candidate-probe-evidence.js";
 import { attachCandidateProbeObserver } from "./candidate-probe-observer.js";
 import {
@@ -107,6 +108,11 @@ export function getCandidateProbeJob(id: string): CandidateProbeJob | undefined 
 }
 
 export async function startCandidateProbeJob(providerId: string): Promise<CandidateProbeJob> {
+  const capability = getCandidateProbeCapability();
+  if (!capability.available) {
+    throw new Error("Lokales Chromium fehlt. Führe im Nova-Projekt 'npx playwright install chromium' aus.");
+  }
+
   const active = listStoredProbeJobs().find(
     (job) => job.providerId === providerId && ["starting", "waiting-for-user"].includes(job.status),
   );
