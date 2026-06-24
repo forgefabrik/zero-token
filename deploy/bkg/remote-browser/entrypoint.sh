@@ -28,15 +28,15 @@ websockify \
   127.0.0.1:5900 \
   >/tmp/websockify.log 2>&1 &
 
-# Start socat to forward CDP from 0.0.0.0:9222 to 127.0.0.1:9222
-socat TCP-LISTEN:9222,reuseaddr,fork TCP:127.0.0.1:9222 &
+# Start socat to forward CDP from 0.0.0.0:9222 to ::1:9222 (IPv6 localhost)
+socat TCP-LISTEN:9222,reuseaddr,fork TCP6:[::1]:9222 &
 
-# Start chromium with CDP on localhost (127.0.0.1)
+# Start chromium with CDP on IPv6 localhost (::1)
 chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
-  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-address=::1 \
   --remote-debugging-port=9222 \
   --remote-allow-origins=* \
   --user-data-dir="$PROFILE_DIR" \
