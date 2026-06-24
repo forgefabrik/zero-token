@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ProviderType } from "../accounts/account-types.js";
 import type { ProviderBrowserConfig, ProviderLoginFailureReason } from "./provider-types.js";
 import { resolveProvider, login as providerLogin } from "./registry.js";
-import { createAccount, updateAccount } from "../accounts/account-service.js";
+import { createAccount } from "../accounts/account-service.js";
 import logger from "../logger.js";
 
 export type ProviderLoginJobStatus =
@@ -138,6 +138,19 @@ async function executeLogin(
       return;
     }
 
+    const cookies = result.session.cookies?.trim() ?? "";
+    const accessToken = result.session.accessToken?.trim() || undefined;
+    if (!cookies && !accessToken) {
+      updateJob(jobId, {
+        status: "failed",
+        failureReason: "session-extraction-failed",
+        message: failureMessage("session-extraction-failed"),
+        completedAt: new Date().toISOString(),
+      });
+      logger.warn({ provider: providerType }, "Login erkannt, aber keine Sessiondaten extrahiert");
+      return;
+    }
+
     updateJob(jobId, {
       status: "saving",
       message: "Session wird lokal gespeichert …",
@@ -148,16 +161,16 @@ async function executeLogin(
       result.info.email?.split("@")[0] ||
       descriptor?.label ||
       providerType;
-    const account = await createAccount(accountLabel, providerType);
-    await updateAccount(account.id, {
+    const now = new Date().toISOString();
+    const account = await createAccount(accountLabel, providerType, {
       email: result.info.email,
       userId: result.info.userId,
       plan: result.info.plan,
-      cookies: result.session.cookies,
-      accessToken: result.session.accessToken,
+      cookies,
+      accessToken,
       userAgent: result.session.userAgent,
       sessionStatus: "valid",
-      lastValidatedAt: new Date().toISOString(),
+      lastValidatedAt: now,
     });
 
     updateJob(jobId, {
@@ -165,7 +178,7 @@ async function executeLogin(
       accountId: account.id,
       accountLabel,
       message: "Account wurde sicher lokal gespeichert.",
-      completedAt: new Date().toISOString(),
+      completedAt: now,
     });
     logger.info(
       { provider: providerType, accountId: account.id },
@@ -195,7 +208,7 @@ function failureMessage(reason: ProviderLoginFailureReason): string {
     case "plan-not-supported":
       return "Der erkannte Account-Plan wird nicht unterstützt.";
     case "session-extraction-failed":
-      return "Die Remote-Sitzung konnte nicht ausgelesen werden.";
+      return "Login wurde erkannt, aber es konnten weder Cookies noch ein Access-Token ausgelesen werden.";
     case "user-cancelled":
       return "Anmeldung wurde abgebrochen.";
     case "configuration-required":
