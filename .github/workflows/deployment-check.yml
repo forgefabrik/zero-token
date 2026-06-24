@@ -7,6 +7,7 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - "deploy/bkg/**"
+      - "scripts/**"
       - "src/**"
       - "tests/**"
       - "web-console/**"
@@ -19,6 +20,7 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - "deploy/bkg/**"
+      - "scripts/**"
       - "src/**"
       - "tests/**"
       - "web-console/**"
@@ -57,26 +59,29 @@ jobs:
       - name: Build web console
         run: npm run ui:build
 
-      - name: Validate first-start admin generation
+      - name: Validate first-start state generation
         run: |
-          rm -f deploy/bkg/state/admin.data deploy/bkg/state/caddy.env
+          STATE_DIR="$RUNNER_TEMP/nova-first-start"
+          mkdir -p "$STATE_DIR"
           docker run --rm \
             -e NOVA_DOMAIN=bkg.eysho.info \
             -v "$PWD/deploy/bkg/init-auth.sh:/usr/local/bin/init-auth.sh:ro" \
-            -v "$PWD/deploy/bkg/state:/state" \
+            -v "$PWD/deploy/bkg/init-api-key.sh:/usr/local/bin/init-api-key.sh:ro" \
+            -v "$STATE_DIR:/state" \
             --entrypoint /bin/sh \
             caddy:2.8-alpine \
-            /usr/local/bin/init-auth.sh
-          test -s deploy/bkg/state/admin.data
-          test -s deploy/bkg/state/caddy.env
-          grep -q '^Domain: https://bkg.eysho.info$' deploy/bkg/state/admin.data
-          grep -q '^Login: https://bkg.eysho.info/$' deploy/bkg/state/admin.data
-          grep -q '^Remote Browser: https://bkg.eysho.info/remote-browser/$' deploy/bkg/state/admin.data
-          if grep -Eq ':3000|:6080|:9222' deploy/bkg/state/admin.data; then
+            -c '/bin/sh /usr/local/bin/init-auth.sh && /bin/sh /usr/local/bin/init-api-key.sh'
+          test -s "$STATE_DIR/admin.data"
+          test -s "$STATE_DIR/caddy.env"
+          test -s "$STATE_DIR/api.key"
+          grep -q '^Domain: https://bkg.eysho.info$' "$STATE_DIR/admin.data"
+          grep -q '^Login: https://bkg.eysho.info/$' "$STATE_DIR/admin.data"
+          grep -q '^Remote Browser: https://bkg.eysho.info/remote-browser/$' "$STATE_DIR/admin.data"
+          grep -Eq '^nova_[a-f0-9]{64}$' "$STATE_DIR/api.key"
+          if grep -Eq ':3000|:6080|:9222' "$STATE_DIR/admin.data"; then
             echo 'admin.data enthält unerlaubte öffentliche Portangaben' >&2
             exit 1
           fi
-          rm -f deploy/bkg/state/admin.data deploy/bkg/state/caddy.env
 
       - name: Build Nova image
         run: docker build --tag nova-bkg:check .
