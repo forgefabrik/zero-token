@@ -8,18 +8,15 @@ import {
 
 const CLAUDE_URL = "https://claude.ai";
 const AUTH_PATTERNS = ["/auth/", "/login", "/signup"];
-const COOKIE_NAMES = ["sessionKey", "__Host-session"];
+const COOKIE_NAMES = ["sessionKey", "__Host-session", "anthropic-device-id"];
 
-/**
- * Claude-Web-Auth: Browser öffnen, auf manuellen Login warten,
- * sessionKey-Cookie extrahieren.
- */
 export const auth: ProviderAuthFunction = async (config) => {
   let browserInstance: { close: () => Promise<void> } | null = null;
 
   try {
     const { browser, page } = await openProviderBrowser({
       targetUrl: CLAUDE_URL,
+      cdpUrl: config.cdpUrl,
       cdpPort: config.cdpPort,
       headless: config.headless,
       proxy: config.proxy,
@@ -32,8 +29,7 @@ export const auth: ProviderAuthFunction = async (config) => {
     const cookies = await extractCookies(page, COOKIE_NAMES);
     const sessionKey = await getCookieValue(page, "sessionKey");
     const userAgent = await page.evaluate(() => navigator.userAgent);
-
-    const info = await fetchClaudeAccountInfo({ cookies, accessToken: sessionKey, userAgent });
+    const info = await fetchClaudeAccountInfo(page);
 
     return {
       ok: true,
@@ -51,31 +47,75 @@ export const auth: ProviderAuthFunction = async (config) => {
     if (msg.includes("Browser konnte nicht geöffnet")) return { ok: false, reason: "browser-launch-failed" };
     return { ok: false, reason: "unknown-error" };
   } finally {
-    if (browserInstance) await browserInstance.close().catch(() => {});
+    // Bei einer CDP-Verbindung gehört Chromium dem Remote-Browser-Container.
+    // Nova darf diesen gemeinsam genutzten, persistenten Browser nicht schließen.
+    if (browserInstance && !config.cdpUrl) {
+      await browserInstance.close().catch(() => {});
+    }
   }
 };
 
-async function fetchClaudeAccountInfo(
-  session: { cookies: string; accessToken?: string; userAgent?: string },
-): Promise<ProviderAccountInfo> {
+async function fetchClaudeAccountInfo(page: {
+  evaluate: <T>(callback: () => Promise<T>) => Promise<T>;
+}): Promise<ProviderAccountInfo> {
   try {
-    const response = await fetch("https://claude.ai/api/auth/session", {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": session.userAgent ?? "zero-token/0.1.0",
-        Cookie: session.cookies,
-        ...(session.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
-      },
+    const data = await page.evaluate(async () => {
+      const sessionResponse = await fetch("/api/auth/session", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const session = sessionResponse.ok ? await sessionResponse.json() : null;
+
+      const organizationsResponse = await fetch("/api/organizations", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const organizations = organizationsResponse.ok
+        ? await organizationsResponse.json()
+        : [];
+
+      return { session, organizations };
     });
-    if (!response.ok) return { plan: "unknown" };
-    const data = (await response.json()) as Record<string, unknown>;
+
+    const session = (data.session ?? {}) as Record<string, unknown>;
+    const organizations = Array.isArray(data.organizations)
+      ? (data.organizations as Record<string, unknown>[])
+      : [];
+    const primaryOrganization = organizations[0] ?? {};
+    const searchable = JSON.stringify({ session, organizations }).toLowerCase();
+
+    let plan: ProviderAccountInfo["plan"] = "free";
+    if (/enterprise/.test(searchable)) plan = "pro";
+    else if (/team|business/.test(searchable)) plan = "pro";
+    else if (/max/.test(searchable)) plan = "pro";
+    else if (/pro|paid|premium/.test(searchable)) plan = "pro";
+    else if (/plus/.test(searchable)) plan = "plus";
+
+    const user = (session.user ?? session.account ?? session) as Record<string, unknown>;
     return {
-      email: typeof data.email === "string" ? data.email : undefined,
-      userId: typeof data.id === "string" ? data.id : undefined,
-      name: typeof data.name === "string" ? data.name : undefined,
-      plan: (data.plan as string) === "pro" ? "pro" : (data.plan as string) === "plus" ? "plus" : "unknown",
+      email:
+        typeof user.email === "string"
+          ? user.email
+          : typeof primaryOrganization.email === "string"
+            ? primaryOrganization.email
+            : undefined,
+      userId:
+        typeof user.id === "string"
+          ? user.id
+          : typeof user.uuid === "string"
+            ? user.uuid
+            : undefined,
+      name:
+        typeof user.name === "string"
+          ? user.name
+          : typeof user.full_name === "string"
+            ? user.full_name
+            : undefined,
+      plan,
     };
   } catch {
-    return { plan: "unknown" };
+    // Ein erfolgreicher Browser-Login ohne explizites Tarifmerkmal entspricht
+    // bei Claude einem nutzbaren Free-Account und nicht "unknown".
+    return { plan: "free" };
   }
 }
