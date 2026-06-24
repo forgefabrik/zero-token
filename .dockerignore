@@ -1,0 +1,12 @@
+.git
+.github
+.source
+node_modules
+web-console/node_modules
+dist
+web-console/dist
+coverage
+*.log
+.env
+.env.*
+!deploy/bkg/.env.example
