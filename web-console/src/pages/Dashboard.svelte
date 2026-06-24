@@ -8,7 +8,7 @@
   let error = $state<string | null>(null);
   let copied = $state<string | null>(null);
 
-  const baseUrl = $derived(config ? `http://${config.gateway.host}:${config.gateway.port}` : "http://127.0.0.1:3000");
+  const publicBaseUrl = "https://bkg.eysho.info";
   const sessionRatio = $derived(status?.accounts ? Math.round((status.validSessions / status.accounts) * 100) : 0);
 
   $effect(() => {
@@ -46,8 +46,8 @@
 <div class="page">
   <section class="hero">
     <div>
-      <span class="eyebrow">Local AI Gateway</span>
-      <h2>Alles bereit für lokale Inference.</h2>
+      <span class="eyebrow">Public AI Gateway</span>
+      <h2>Alles bereit für öffentliche Inference.</h2>
       <p>Accounts, Modelle und Gateway-Zustand auf einen Blick – ohne sensible Sessiondaten im Browser offenzulegen.</p>
     </div>
     <button class="btn" onclick={load} disabled={loading}>{loading ? "Prüfe …" : "Status aktualisieren"}</button>
@@ -65,17 +65,17 @@
     <div class="stats">
       <article><span>Accounts</span><strong>{status?.accounts ?? 0}</strong><small>{status?.validSessions ?? 0} aktive Sessions</small></article>
       <article><span>Session Health</span><strong>{sessionRatio}%</strong><small>{sessionRatio === 100 ? "Alle Sessions gültig" : "Prüfung empfohlen"}</small></article>
-      <article><span>Modelle</span><strong>{status?.models ?? 0}</strong><small>im lokalen Cache</small></article>
-      <article><span>Gateway</span><strong class:healthy={health?.status === "ok"}>{health?.status === "ok" ? "Online" : "Offline"}</strong><small>{baseUrl}</small></article>
+      <article><span>Modelle</span><strong>{status?.models ?? 0}</strong><small>im verifizierten Cache</small></article>
+      <article><span>Gateway</span><strong class:healthy={health?.status === "ok"}>{health?.status === "ok" ? "Online" : "Offline"}</strong><small>{publicBaseUrl}</small></article>
     </div>
 
     <div class="dashboard-grid">
       <section class="panel endpoints">
-        <div class="panel-head"><div><span class="eyebrow">API</span><h3>OpenAI-kompatible Endpunkte</h3></div><span class="live"><i></i> lokal</span></div>
+        <div class="panel-head"><div><span class="eyebrow">API</span><h3>OpenAI-kompatible Endpunkte</h3></div><span class="live"><i></i> öffentlich</span></div>
         {#each [
-          ["Models", `${baseUrl}/v1/models`, "GET"],
-          ["Chat Completions", `${baseUrl}/v1/chat/completions`, "POST"],
-          ["Responses", `${baseUrl}/v1/responses`, "POST"],
+          ["Models", `${publicBaseUrl}/v1/models`, "GET"],
+          ["Chat Completions", `${publicBaseUrl}/v1/chat/completions`, "POST"],
+          ["Responses", `${publicBaseUrl}/v1/responses`, "POST"],
         ] as endpoint}
           <button class="endpoint" onclick={() => copy(endpoint[1], endpoint[0])}>
             <span class="method">{endpoint[2]}</span>
@@ -88,9 +88,9 @@
       <section class="panel setup">
         <div><span class="eyebrow">Schnellstart</span><h3>Provider verbinden</h3></div>
         <ol>
-          <li><span>1</span><div><strong>Provider wählen</strong><small>Öffne die Provider-Seite und kopiere den Login-Befehl.</small></div></li>
-          <li><span>2</span><div><strong>Browser-Login abschließen</strong><small>Die Session wird ausschließlich lokal gespeichert.</small></div></li>
-          <li><span>3</span><div><strong>Modelle aktualisieren</strong><small>Danach steht der lokale Gateway-Endpunkt bereit.</small></div></li>
+          <li><span>1</span><div><strong>Provider wählen</strong><small>Öffne die Provider-Seite und starte den sichtbaren Browser-Login.</small></div></li>
+          <li><span>2</span><div><strong>Browser-Login abschließen</strong><small>Die Session wird im persistenten Remote-Browserprofil gespeichert.</small></div></li>
+          <li><span>3</span><div><strong>Modelle aktualisieren</strong><small>Danach stehen die öffentlichen Gateway-Endpunkte bereit.</small></div></li>
         </ol>
         <button class="command" onclick={() => copy("nova providers list", "providers")}><code>nova providers list</code><span>{copied === "providers" ? "Kopiert" : "Kopieren"}</span></button>
       </section>
