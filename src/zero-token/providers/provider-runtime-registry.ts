@@ -18,8 +18,8 @@ const RUNTIME_ADAPTERS: Partial<Record<ProviderType, ProviderRuntimeAdapter>> = 
       return module.discoverModels;
     },
     createInferenceProvider: async (accountId?: string) => {
-      const module = await import("../inference/chatgpt-provider.js");
-      return new module.ChatGPTProvider(accountId);
+      const module = await import("../inference/chatgpt-browser-provider.js");
+      return new module.ChatGPTBrowserProvider(accountId);
     },
   },
 };
