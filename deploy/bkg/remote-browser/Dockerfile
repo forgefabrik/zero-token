@@ -11,6 +11,7 @@ RUN apt-get update \
     curl \
     novnc \
     openbox \
+    socat \
     websockify \
     x11vnc \
     xvfb \
