@@ -22,6 +22,30 @@ const RUNTIME_ADAPTERS: Partial<Record<ProviderType, ProviderRuntimeAdapter>> = 
       return new module.ChatGPTBrowserProvider(accountId);
     },
   },
+  qwen: {
+    provider: "qwen",
+    publicApiId: "qwen-web",
+    loadModelDiscoverer: async () => {
+      const module = await import("./qwen-web-models.js");
+      return module.discoverModels;
+    },
+    createInferenceProvider: async (accountId?: string) => {
+      const module = await import("../inference/qwen-browser-provider.js");
+      return new module.QwenBrowserProvider(accountId);
+    },
+  },
+  glm: {
+    provider: "glm",
+    publicApiId: "glm-web",
+    loadModelDiscoverer: async () => {
+      const module = await import("./glm-web-models.js");
+      return module.discoverModels;
+    },
+    createInferenceProvider: async (accountId?: string) => {
+      const module = await import("../inference/glm-browser-provider.js");
+      return new module.GlmBrowserProvider(accountId);
+    },
+  },
 };
 
 export function getProviderRuntime(
