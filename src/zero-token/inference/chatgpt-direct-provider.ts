@@ -26,6 +26,7 @@ import type {
 interface BrowserResult {
   status: number;
   body: string;
+  sentinelError?: string;
 }
 
 interface ConversationState {
@@ -151,6 +152,22 @@ export class ChatGPTDirectProvider implements InferenceProvider {
       const startedAt = performance.now();
       const result = await page.evaluate(
         async ({ conversationBody, referer }): Promise<BrowserResult> => {
+          type SentinelModule = {
+            bk?: () => Promise<{
+              turnstile?: { bx?: string; dx?: string };
+            }>;
+            bi?: (key: string) => Promise<unknown>;
+            bl?: { getEnforcementToken?: (requirements: unknown) => Promise<unknown> };
+            bm?: { getEnforcementToken?: (requirements: unknown) => Promise<unknown> };
+            fX?: (
+              requirements: unknown,
+              arkose: unknown,
+              turnstile: unknown,
+              proof: unknown,
+              unused: unknown,
+            ) => Promise<Record<string, string>>;
+          };
+
           const sessionResponse = await fetch(
             "https://chatgpt.com/api/auth/session",
             { credentials: "include", cache: "no-store" },
@@ -166,37 +183,116 @@ export class ChatGPTDirectProvider implements InferenceProvider {
             accessToken?: string;
             oaiDeviceId?: string;
           };
-          const headers: Record<string, string> = {
+          const deviceId = session.oaiDeviceId ?? crypto.randomUUID();
+          const baseHeaders = (): Record<string, string> => ({
             "Content-Type": "application/json",
             Accept: "text/event-stream",
             "oai-language": "en-US",
-            "oai-device-id": session.oaiDeviceId ?? crypto.randomUUID(),
+            "oai-device-id": deviceId,
             Referer: referer || "https://chatgpt.com/",
+            "sec-ch-ua":
+              '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Linux"',
+            ...(session.accessToken
+              ? { Authorization: `Bearer ${session.accessToken}` }
+              : {}),
+          });
+
+          const warmup = async () => {
+            const headers = baseHeaders();
+            for (const endpoint of [
+              "https://chatgpt.com/backend-api/conversation/init",
+              "https://chatgpt.com/backend-api/sentinel/chat-requirements/prepare",
+              "https://chatgpt.com/backend-api/sentinel/chat-requirements/finalize",
+            ]) {
+              await fetch(endpoint, {
+                method: "POST",
+                credentials: "include",
+                cache: "no-store",
+                headers,
+                body: "{}",
+              }).catch(() => undefined);
+            }
           };
-          if (session.accessToken) {
-            headers.Authorization = `Bearer ${session.accessToken}`;
-          }
 
-          await fetch("https://chatgpt.com/backend-api/conversation/init", {
-            method: "POST",
-            credentials: "include",
-            headers,
-            body: "{}",
-          }).catch(() => undefined);
-
-          const response = await fetch(
-            "https://chatgpt.com/backend-api/conversation",
-            {
+          const directRequest = async (headers: Record<string, string>) =>
+            fetch("https://chatgpt.com/backend-api/conversation", {
               method: "POST",
               credentials: "include",
               cache: "no-store",
               headers,
               body: JSON.stringify(conversationBody),
-            },
-          );
+            });
+
+          await warmup();
+          let response: Response | undefined;
+          let sentinelError: string | undefined;
+
+          try {
+            const scripts = Array.from(document.scripts);
+            const discoveredAsset = scripts
+              .map((script) => script.src)
+              .find(
+                (source) =>
+                  source.includes("oaistatic.com") && source.endsWith(".js"),
+              );
+            const assetUrl =
+              discoveredAsset ??
+              "https://cdn.oaistatic.com/assets/i5bamk05qmvsi6c3.js";
+            const sentinel = (await import(
+              /* @vite-ignore */ assetUrl
+            )) as SentinelModule;
+            if (
+              typeof sentinel.bk !== "function" ||
+              typeof sentinel.bi !== "function" ||
+              typeof sentinel.fX !== "function"
+            ) {
+              throw new Error(`Sentinel-Exports fehlen: ${assetUrl}`);
+            }
+
+            const requirements = await sentinel.bk();
+            const turnstileKey =
+              requirements?.turnstile?.bx ?? requirements?.turnstile?.dx;
+            if (!turnstileKey) {
+              throw new Error("Sentinel lieferte keinen Turnstile-Key");
+            }
+
+            const turnstile = await sentinel.bi(turnstileKey);
+            let arkose: unknown = null;
+            let proof: unknown = null;
+            try {
+              arkose = await sentinel.bl?.getEnforcementToken?.(requirements);
+            } catch {
+              arkose = null;
+            }
+            try {
+              proof = await sentinel.bm?.getEnforcementToken?.(requirements);
+            } catch {
+              proof = null;
+            }
+
+            const extraHeaders = await sentinel.fX(
+              requirements,
+              arkose,
+              turnstile,
+              proof,
+              null,
+            );
+            response = await directRequest({
+              ...baseHeaders(),
+              ...extraHeaders,
+            });
+          } catch (error) {
+            sentinelError =
+              error instanceof Error ? error.message : String(error);
+          }
+
+          response ??= await directRequest(baseHeaders());
           return {
             status: response.status,
             body: await response.text(),
+            sentinelError,
           };
         },
         { conversationBody: body, referer: page.url() },
@@ -209,6 +305,7 @@ export class ChatGPTDirectProvider implements InferenceProvider {
           model: request.model,
           endpoint: "/backend-api/conversation",
           status: result.status,
+          sentinelError: result.sentinelError,
           continuedConversation: Boolean(state),
           continuationSource: state
             ? explicitKey && conversationStates.has(explicitKey)
@@ -230,8 +327,11 @@ export class ChatGPTDirectProvider implements InferenceProvider {
         throw new InferenceRateLimitError("chatgpt");
       }
       if (result.status < 200 || result.status >= 300) {
+        const sentinelHint = result.sentinelError
+          ? ` Sentinel: ${result.sentinelError}`
+          : "";
         throw new InferenceError(
-          `ChatGPT Direct-API antwortete mit HTTP ${result.status}: ${result.body.slice(0, 500)}. Es wird bewusst kein DOM-/Tastatur-Fallback verwendet.`,
+          `ChatGPT Direct-API antwortete mit HTTP ${result.status}: ${result.body.slice(0, 500)}.${sentinelHint} Es wird bewusst kein DOM-/Tastatur-Fallback verwendet.`,
           result.status,
           "chatgpt",
         );
