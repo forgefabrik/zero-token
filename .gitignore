@@ -12,3 +12,4 @@ deploy/bkg/state/admin.data
 
 deploy/bkg/state/caddy.env
 deploy/bkg/state/last-build.sha
+deploy/bkg/state/last-build.sha
