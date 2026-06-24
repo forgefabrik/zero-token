@@ -1,63 +1,70 @@
 import type { SessionValidationResult } from "../session/session-types.js";
-
-const ACCOUNT_API = "https://chatgpt.com/api/auth/session";
+import { getProviderBrowserPage } from "./remote-browser-session.js";
+import { detectChatGptPlan } from "./chatgpt-web-auth.js";
 
 /**
- * ChatGPT-Session-Validierung.
- * Ruft /api/auth/session auf und prüft ob der User eingeloggt ist.
+ * Validates ChatGPT inside the persistent authenticated browser profile.
+ * Stored cookie strings are intentionally not replayed from Node because the
+ * web session can be bound to the real browser context.
  */
 export async function validateSession(
   cookies: string,
   accessToken: string | undefined,
   userAgent: string | undefined,
 ): Promise<SessionValidationResult> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "User-Agent": userAgent ?? "zero-token/0.1.0",
-    Cookie: cookies,
-  };
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
-  }
+  void cookies;
+  void accessToken;
+  void userAgent;
 
   try {
-    const response = await fetch(ACCOUNT_API, { headers, redirect: "follow" });
+    const page = await getProviderBrowserPage("https://chatgpt.com/");
+    await page.goto("https://chatgpt.com/", {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
 
-    if (response.status === 401 || response.status === 403) {
+    const result = await page.evaluate(async () => {
+      const response = await fetch("/api/auth/session", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      return {
+        status: response.status,
+        body: response.ok ? await response.json() : undefined,
+      };
+    });
+
+    if (result.status === 401 || result.status === 403) {
       return {
         accountId: "",
         provider: "chatgpt",
         valid: false,
         status: "expired",
-        error: `HTTP ${response.status} – Session abgelaufen`,
+        error: `Browser-Session antwortete mit HTTP ${result.status}`,
       };
     }
 
-    if (!response.ok) {
+    if (result.status < 200 || result.status >= 300 || !result.body) {
       return {
         accountId: "",
         provider: "chatgpt",
         valid: false,
         status: "error",
-        error: `HTTP ${response.status}`,
+        error: `Browser-Sessionprüfung antwortete mit HTTP ${result.status}`,
       };
     }
 
-    const data = (await response.json()) as Record<string, unknown>;
+    const data = result.body as Record<string, unknown>;
     const user = data.user as Record<string, unknown> | undefined;
-
-    if (!user || !user.email) {
+    if (!user) {
       return {
         accountId: "",
         provider: "chatgpt",
         valid: false,
         status: "expired",
-        error: "Kein User-Objekt in der API-Antwort",
+        error: "Im Browser wurde kein angemeldeter Benutzer erkannt.",
       };
     }
-
-    const plan =
-      data.plan === "plus" || (user?.plan as string) === "plus" ? "plus" : "unknown";
 
     return {
       accountId: "",
@@ -67,16 +74,16 @@ export async function validateSession(
       userId: typeof user.id === "string" ? user.id : undefined,
       email: typeof user.email === "string" ? user.email : undefined,
       name: typeof user.name === "string" ? user.name : undefined,
-      plan,
+      plan: detectChatGptPlan(data),
       expiresAt: typeof data.expires === "string" ? data.expires : undefined,
     };
-  } catch (err) {
+  } catch (error) {
     return {
       accountId: "",
       provider: "chatgpt",
       valid: false,
       status: "error",
-      error: `Netzwerkfehler: ${err instanceof Error ? err.message : String(err)}`,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
