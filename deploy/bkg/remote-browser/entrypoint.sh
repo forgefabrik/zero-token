@@ -7,7 +7,10 @@ DISPLAY_NUMBER="${DISPLAY#:}"
 
 rm -f "/tmp/.X${DISPLAY_NUMBER}-lock"
 rm -rf "/tmp/.X11-unix/X${DISPLAY_NUMBER}"
-mkdir -p /data/chromium
+
+# Use a temporary profile directory to avoid profile lock issues
+PROFILE_DIR="/tmp/chromium-profile-$$"
+mkdir -p "$PROFILE_DIR"
 
 Xvfb "$DISPLAY" -screen 0 "${WIDTH}x${HEIGHT}x24" -ac +extension RANDR &
 openbox-session >/tmp/openbox.log 2>&1 &
@@ -25,14 +28,18 @@ websockify \
   127.0.0.1:5900 \
   >/tmp/websockify.log 2>&1 &
 
-exec chromium \
+# Start socat to forward CDP from 0.0.0.0:9222 to 127.0.0.1:9222
+socat TCP-LISTEN:9222,reuseaddr,fork TCP:127.0.0.1:9222 &
+
+# Start chromium with CDP on localhost (127.0.0.1)
+chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
-  --remote-debugging-address=0.0.0.0 \
+  --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --remote-allow-origins=* \
-  --user-data-dir=/data/chromium \
+  --user-data-dir="$PROFILE_DIR" \
   --window-size="${WIDTH},${HEIGHT}" \
   --start-maximized \
   about:blank
