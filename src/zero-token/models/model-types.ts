@@ -18,6 +18,7 @@ export interface ModelInfo {
 }
 
 export interface ModelsCache {
+  version: 2;
   fetchedAt: string;
   ttlSeconds: number;
   models: ModelInfo[];
@@ -25,7 +26,7 @@ export interface ModelsCache {
 
 /**
  * Provider-specific model discovery function.
- * Fetches available models for a given provider using stored session credentials.
+ * Fetches only models actually available to the authenticated account.
  */
 export type ModelDiscoverer = (
   cookies: string,
