@@ -4,6 +4,7 @@ services:
   auth-init:
     image: caddy:2.8-alpine
     restart: "no"
+    working_dir: /
     environment:
       NOVA_DOMAIN: bkg.eysho.info
     entrypoint:
