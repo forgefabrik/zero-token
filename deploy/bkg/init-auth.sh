@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-STATE_DIR="/state"
+STATE_DIR="state/"
 ADMIN_FILE="$STATE_DIR/admin.data"
 CADDY_ENV_FILE="$STATE_DIR/caddy.env"
 DOMAIN="${NOVA_DOMAIN:-bkg.eysho.info}"
