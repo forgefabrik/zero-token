@@ -7,6 +7,8 @@ DEPLOY_DIR="$REPO_ROOT/deploy/bkg"
 COMPOSE_FILE="$DEPLOY_DIR/compose.yaml"
 
 export NOVA_CDP_URL="http://172.30.250.10:9222"
+export NOVA_BROWSER_MANAGER_URL="http://172.30.250.10:9221"
+export NOVA_BROWSER_CDP_HOST="172.30.250.10"
 export NOVA_REMOTE_LOGIN_VIEW_URL="https://bkg.eysho.info/remote-browser/vnc.html?autoconnect=true&resize=remote&path=remote-browser/websockify"
 export NOVA_HOST_UID="$(id -u)"
 export NOVA_HOST_GID="$(id -g)"
@@ -43,8 +45,6 @@ chmod 750 "$DEPLOY_DIR/state"
 compose config >/dev/null
 "$REPO_ROOT/scripts/build.sh" auto
 
-# auth-init korrigiert bei jedem Start Besitzer und Rechte der bestehenden
-# Zugangsdaten. Danach wird Nova neu erstellt, damit es den Key neu einliest.
 compose up -d --remove-orphans --force-recreate auth-init
 compose up -d remote-browser
 compose up -d --force-recreate nova
@@ -81,6 +81,7 @@ echo "Modelle: https://bkg.eysho.info/v1/models"
 echo "API-Key-Datei: $DEPLOY_DIR/state/api.key"
 echo "Remote Browser: https://bkg.eysho.info/remote-browser/"
 echo "Admin-Zugangsdaten: $DEPLOY_DIR/state/admin.data"
-echo "Interne CDP-Adresse: $NOVA_CDP_URL"
+echo "Browser-Profilmanager: $NOVA_BROWSER_MANAGER_URL"
+echo "Provider-CDP-Ports: 9301 bis 9313"
 echo
 compose ps
