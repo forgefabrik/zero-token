@@ -17,6 +17,12 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 mkdir -p state
+if [ ! -w state ]; then
+  echo "Der Ordner $(pwd)/state ist nicht beschreibbar." >&2
+  echo "Führe aus: sudo chown -R $(id -u):$(id -g) $(pwd)/state" >&2
+  exit 1
+fi
+chmod 700 state
 
 docker compose config >/dev/null
 docker compose up -d --build --remove-orphans
