@@ -1,6 +1,11 @@
-import type { ProviderAuthFunction, ProviderBrowserConfig, ProviderLoginResult } from "./provider-types.js";
+import type {
+  ProviderAuthFunction,
+  ProviderBrowserConfig,
+  ProviderLoginResult,
+} from "./provider-types.js";
 import type { ProviderType } from "../accounts/account-types.js";
 import { resolveProvider } from "./provider-catalog.js";
+import { ensureProviderBrowserProfile } from "./provider-browser-profiles.js";
 
 export { PROVIDERS, getProvider, listProviders, resolveProvider } from "./provider-catalog.js";
 
@@ -20,13 +25,26 @@ const loaders: Partial<Record<ProviderType, () => Promise<{ auth: ProviderAuthFu
   xiaomimo: () => import("./xiaomimo-web-auth.js"),
 };
 
-export async function login(providerId: string, config: ProviderBrowserConfig = {}): Promise<ProviderLoginResult> {
+export async function login(
+  providerId: string,
+  config: ProviderBrowserConfig = {},
+): Promise<ProviderLoginResult> {
   const provider = resolveProvider(providerId);
   if (!provider) return { ok: false, reason: "unknown-provider" };
-  if (provider.authType === "api-key") return { ok: false, reason: "configuration-required" };
+  if (provider.authType === "api-key") {
+    return { ok: false, reason: "configuration-required" };
+  }
 
   const load = loaders[provider.implementation];
   if (!load) return { ok: false, reason: "unknown-provider" };
+
+  const profile = await ensureProviderBrowserProfile(provider.loginUrl, {
+    reset: true,
+    fallbackCdpUrl: config.cdpUrl,
+  });
   const { auth } = await load();
-  return auth(config);
+  return auth({
+    ...config,
+    cdpUrl: profile.cdpUrl,
+  });
 }
