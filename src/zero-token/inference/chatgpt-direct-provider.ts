@@ -4,6 +4,13 @@ import { getAccount } from "../accounts/account-repository.js";
 import logger from "../logger.js";
 import { getProviderBrowserPage } from "../providers/remote-browser-session.js";
 import { quotaManager } from "../quota/quota-manager.js";
+import {
+  explicitConversationKey,
+  historyContinuationKey,
+  historyLookupKey,
+  lastUserPrompt,
+  transcriptPrompt,
+} from "./chatgpt-conversation-state.js";
 import type { InferenceProvider } from "./inference-provider.js";
 import {
   InferenceAuthError,
@@ -14,7 +21,6 @@ import type {
   ChatCompletionChunk,
   ChatCompletionRequest,
   ChatCompletionResponse,
-  ChatMessage,
 } from "./types.js";
 
 interface BrowserResult {
@@ -32,62 +38,12 @@ interface ParsedResponse {
   chunks: ChatCompletionChunk[];
   conversationId?: string;
   parentMessageId?: string;
+  fullText: string;
 }
 
 const conversationStates = new Map<string, ConversationState>();
 const STATE_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_STATES = 500;
-
-function messageText(message: ChatMessage): string {
-  return typeof message.content === "string"
-    ? message.content
-    : message.content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text ?? "")
-        .join("");
-}
-
-function lastUserPrompt(request: ChatCompletionRequest): string {
-  const message = [...request.messages]
-    .reverse()
-    .find((entry) => entry.role === "user");
-  const text = message ? messageText(message).trim() : "";
-  if (!text) {
-    throw new InferenceError(
-      "Keine Nutzernachricht für ChatGPT gefunden.",
-      400,
-      "chatgpt",
-    );
-  }
-  return text;
-}
-
-function transcriptPrompt(request: ChatCompletionRequest): string {
-  const transcript = request.messages
-    .map((message) => {
-      const text = messageText(message).trim();
-      if (!text) return "";
-      const role =
-        message.role === "system"
-          ? "System"
-          : message.role === "assistant"
-            ? "Assistant"
-            : "User";
-      return `${role}: ${text}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
-  if (!transcript) return lastUserPrompt(request);
-  return transcript;
-}
-
-function sessionKey(
-  request: ChatCompletionRequest,
-  accountId: string,
-): string | undefined {
-  const user = request.user?.trim();
-  return user ? `${accountId}:${request.model}:${user}` : undefined;
-}
 
 function pruneStates(): void {
   const cutoff = Date.now() - STATE_TTL_MS;
@@ -102,9 +58,26 @@ function pruneStates(): void {
 }
 
 function clearAccountStates(accountId: string): void {
+  const marker = `:${accountId}:`;
   for (const key of conversationStates.keys()) {
-    if (key.startsWith(`${accountId}:`)) conversationStates.delete(key);
+    if (key.includes(marker)) conversationStates.delete(key);
   }
+}
+
+function resolveState(
+  request: ChatCompletionRequest,
+  accountId: string,
+): {
+  state?: ConversationState;
+  explicitKey?: string;
+  historyKey?: string;
+} {
+  const explicitKey = explicitConversationKey(request, accountId);
+  const historyKey = historyLookupKey(request, accountId);
+  const state =
+    (explicitKey ? conversationStates.get(explicitKey) : undefined) ??
+    (historyKey ? conversationStates.get(historyKey) : undefined);
+  return { state, explicitKey, historyKey };
 }
 
 export class ChatGPTDirectProvider implements InferenceProvider {
@@ -132,22 +105,26 @@ export class ChatGPTDirectProvider implements InferenceProvider {
     await quotaManager.init();
     pruneStates();
     const account = await this.resolveAccount(request.accountId, request.model);
-    const key = sessionKey(request, account.id);
-    const state = key ? conversationStates.get(key) : undefined;
+    const { state, explicitKey, historyKey } = resolveState(request, account.id);
     const prompt = state ? lastUserPrompt(request) : transcriptPrompt(request);
-    const messageId = randomUUID();
-    const parentMessageId = state?.parentMessageId ?? randomUUID();
+    if (!prompt) {
+      throw new InferenceError(
+        "Keine Nutzernachricht für ChatGPT gefunden.",
+        400,
+        "chatgpt",
+      );
+    }
 
     const body = {
       action: "next",
       messages: [
         {
-          id: messageId,
+          id: randomUUID(),
           author: { role: "user" },
           content: { content_type: "text", parts: [prompt] },
         },
       ],
-      parent_message_id: parentMessageId,
+      parent_message_id: state?.parentMessageId ?? randomUUID(),
       ...(state?.conversationId
         ? { conversation_id: state.conversationId }
         : {}),
@@ -233,6 +210,13 @@ export class ChatGPTDirectProvider implements InferenceProvider {
           endpoint: "/backend-api/conversation",
           status: result.status,
           continuedConversation: Boolean(state),
+          continuationSource: state
+            ? explicitKey && conversationStates.has(explicitKey)
+              ? "user"
+              : historyKey
+                ? "history"
+                : "unknown"
+            : "new",
           durationMs: Math.round(performance.now() - startedAt),
         },
         "ChatGPT-API-Aufruf abgeschlossen",
@@ -254,12 +238,19 @@ export class ChatGPTDirectProvider implements InferenceProvider {
       }
 
       const parsed = parseResponse(result.body, request.model);
-      if (key && parsed.conversationId && parsed.parentMessageId) {
-        conversationStates.set(key, {
+      if (parsed.conversationId && parsed.parentMessageId) {
+        const nextState: ConversationState = {
           conversationId: parsed.conversationId,
           parentMessageId: parsed.parentMessageId,
           updatedAt: Date.now(),
-        });
+        };
+        if (explicitKey) conversationStates.set(explicitKey, nextState);
+        if (parsed.fullText) {
+          conversationStates.set(
+            historyContinuationKey(request, account.id, parsed.fullText),
+            nextState,
+          );
+        }
       }
 
       await quotaManager.reportSuccess(account.id);
@@ -381,7 +372,12 @@ function parseResponse(raw: string, model: string): ParsedResponse {
     }
   }
 
-  return { chunks, conversationId, parentMessageId };
+  return {
+    chunks,
+    conversationId,
+    parentMessageId,
+    fullText: accumulated,
+  };
 }
 
 function chunksToStream(
