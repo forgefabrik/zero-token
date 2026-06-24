@@ -36,6 +36,22 @@ type DecisionBody = { decision?: CandidateDecision; note?: string };
 type LoginBody = { providerId?: string };
 type ProbeBody = { providerId?: string };
 
+function remoteLoginSettings(): { cdpUrl: string; viewUrl: string } {
+  const cdpUrl = process.env.NOVA_CDP_URL?.trim();
+  const viewUrl = process.env.NOVA_REMOTE_LOGIN_VIEW_URL?.trim();
+  if (!cdpUrl || !viewUrl) {
+    throw new Error(
+      "Server-Login nicht konfiguriert: NOVA_CDP_URL und NOVA_REMOTE_LOGIN_VIEW_URL fehlen.",
+    );
+  }
+  const parsed = new URL(viewUrl);
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (parsed.protocol !== "https:" && !local) {
+    throw new Error("NOVA_REMOTE_LOGIN_VIEW_URL muss HTTPS verwenden.");
+  }
+  return { cdpUrl, viewUrl: parsed.toString() };
+}
+
 export function createDiscoveryRoutes(): Hono {
   const routes = new Hono();
   void startDiscoveryControl();
@@ -121,11 +137,31 @@ export function createDiscoveryRoutes(): Hono {
     }
   });
 
-  routes.get("/logins", (c) => c.json({ jobs: listProviderLoginJobs() }));
+  routes.get("/logins", (c) => {
+    try {
+      const { viewUrl } = remoteLoginSettings();
+      return c.json({
+        jobs: listProviderLoginJobs().map((job) => ({ ...job, viewUrl })),
+        configured: true,
+      });
+    } catch (error) {
+      return c.json({
+        jobs: [],
+        configured: false,
+        error: error instanceof Error ? error.message : "Server-Login nicht konfiguriert",
+      });
+    }
+  });
 
   routes.get("/logins/:id", (c) => {
     const job = getProviderLoginJob(c.req.param("id"));
-    return job ? c.json(job) : c.json({ error: "Login-Job nicht gefunden" }, 404);
+    if (!job) return c.json({ error: "Login-Job nicht gefunden" }, 404);
+    try {
+      const { viewUrl } = remoteLoginSettings();
+      return c.json({ ...job, viewUrl });
+    } catch {
+      return c.json(job);
+    }
   });
 
   routes.post("/logins", async (c) => {
@@ -133,7 +169,9 @@ export function createDiscoveryRoutes(): Hono {
     if (!body.providerId) return c.json({ error: "providerId ist erforderlich" }, 400);
 
     try {
-      return c.json(startProviderLoginJob(body.providerId), 202);
+      const { cdpUrl, viewUrl } = remoteLoginSettings();
+      const job = startProviderLoginJob(body.providerId, { cdpUrl });
+      return c.json({ ...job, viewUrl }, 202);
     } catch (error) {
       return c.json(
         { error: error instanceof Error ? error.message : "Login konnte nicht gestartet werden" },
