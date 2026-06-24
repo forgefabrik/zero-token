@@ -30,8 +30,8 @@ const RUNTIME_ADAPTERS: Partial<Record<ProviderType, ProviderRuntimeAdapter>> = 
       return module.discoverModels;
     },
     createInferenceProvider: async (accountId?: string) => {
-      const module = await import("../inference/claude-browser-provider.js");
-      return new module.ClaudeBrowserProvider(accountId);
+      const module = await import("../inference/claude-openclaw-provider.js");
+      return new module.ClaudeOpenClawProvider(accountId);
     },
   },
   qwen: {
