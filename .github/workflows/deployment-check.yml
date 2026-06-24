@@ -25,6 +25,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate first-start admin generation
+        run: |
+          rm -f deploy/bkg/state/admin.data deploy/bkg/state/caddy.env
+          docker run --rm \
+            -e NOVA_DOMAIN=bkg.eysho.info \
+            -v "$PWD/deploy/bkg/init-auth.sh:/usr/local/bin/init-auth.sh:ro" \
+            -v "$PWD/deploy/bkg/state:/state" \
+            --entrypoint /bin/sh \
+            caddy:2.8-alpine \
+            /usr/local/bin/init-auth.sh
+          test -s deploy/bkg/state/admin.data
+          test -s deploy/bkg/state/caddy.env
+          grep -q '^Domain: https://bkg.eysho.info$' deploy/bkg/state/admin.data
+          grep -q '^Login: https://bkg.eysho.info/$' deploy/bkg/state/admin.data
+          grep -q '^Remote Browser: https://bkg.eysho.info/remote-browser/$' deploy/bkg/state/admin.data
+          if grep -Eq ':3000|:6080|:9222' deploy/bkg/state/admin.data; then
+            echo 'admin.data enthält unerlaubte öffentliche Portangaben' >&2
+            exit 1
+          fi
+          rm -f deploy/bkg/state/admin.data deploy/bkg/state/caddy.env
+
       - name: Build Nova image
         run: docker build --tag nova-bkg:check .
 
@@ -32,10 +53,6 @@ jobs:
         run: docker build --tag nova-remote-browser:check deploy/bkg/remote-browser
 
       - name: Validate Compose
-        env:
-          ACME_EMAIL: validation@example.invalid
-          NOVA_WEB_USER: nova
-          NOVA_WEB_PASSWORD_HASH: validation
         run: docker compose -f deploy/bkg/compose.yaml config >/dev/null
 
       - name: Validate Caddyfile
