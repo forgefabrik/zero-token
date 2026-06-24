@@ -40,7 +40,10 @@ chmod 700 "$DEPLOY_DIR/state"
 
 compose config >/dev/null
 "$REPO_ROOT/scripts/build.sh" auto
-compose up -d --remove-orphans auth-init remote-browser nova caddy
+compose up -d --remove-orphans auth-init remote-browser nova
+# Caddy bind-mountet seine Konfiguration. Ein gezieltes Recreate lädt Änderungen
+# an Routing, TLS und Authentifizierung zuverlässig neu.
+compose up -d --force-recreate caddy
 
 for service in remote-browser nova caddy; do
   attempts=0
