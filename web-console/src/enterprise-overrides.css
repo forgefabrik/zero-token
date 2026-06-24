@@ -1,0 +1,64 @@
+body::after {
+  content: "";
+  position: fixed;
+  top: 52px;
+  right: 0;
+  width: min(60vw, 960px);
+  height: 245px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.2;
+  background: url('/nova-network.svg') right top / contain no-repeat;
+}
+
+.logo {
+  width: 44px !important;
+  height: 44px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: url('/nova-mark.svg') center / contain no-repeat !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.brand-copy strong,
+.brand-copy span {
+  font-size: 0 !important;
+}
+
+.brand-copy strong::before {
+  content: "FF-ZTN";
+  color: #f4f7ff;
+  font-size: 0.9rem;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+}
+
+.brand-copy span::before {
+  content: "ForgeFabrik Zero Token Nova";
+  color: #7f8da4;
+  font-size: 0.58rem;
+}
+
+.provider-page .summary-grid {
+  display: flex !important;
+  gap: 0 !important;
+  border-top: 1px solid rgba(145,174,214,.13);
+  border-bottom: 1px solid rgba(145,174,214,.13);
+  background: rgba(8,13,23,.48);
+}
+
+.provider-page .metric {
+  flex: 1 1 0;
+  min-height: 64px;
+  border: 0 !important;
+  border-right: 1px solid rgba(145,174,214,.12) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.provider-page .metric:last-child {
+  border-right: 0 !important;
+}
