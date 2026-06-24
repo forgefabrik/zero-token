@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" fill="none">
+  <defs>
+    <linearGradient id="line" x1="80" y1="40" x2="880" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF3BA7" stop-opacity=".55"/>
+      <stop offset=".48" stop-color="#FF944D" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#69D9FF" stop-opacity=".5"/>
+    </linearGradient>
+    <radialGradient id="node" cx="0" cy="0" r="1" gradientTransform="translate(0 0) rotate(90) scale(8)">
+      <stop stop-color="#F7FCFF"/>
+      <stop offset=".3" stop-color="#69D9FF"/>
+      <stop offset="1" stop-color="#69D9FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g opacity=".56" stroke="url(#line)" stroke-width="1.1">
+    <path d="M46 186 162 118 270 156 386 76 514 134 642 58 784 104 914 34"/>
+    <path d="M82 42 202 84 330 36 452 94 590 24 714 72 846 40"/>
+    <path d="M162 118 202 84M270 156 330 36M386 76 452 94M514 134 590 24M642 58 714 72M784 104 846 40"/>
+    <path d="M46 186H914" opacity=".2" stroke-dasharray="3 7"/>
+    <path d="M82 42H846" opacity=".15" stroke-dasharray="2 9"/>
+  </g>
+  <g>
+    <circle cx="46" cy="186" r="8" fill="url(#node)"/>
+    <circle cx="162" cy="118" r="8" fill="url(#node)"/>
+    <circle cx="270" cy="156" r="8" fill="url(#node)"/>
+    <circle cx="386" cy="76" r="8" fill="url(#node)"/>
+    <circle cx="514" cy="134" r="8" fill="url(#node)"/>
+    <circle cx="642" cy="58" r="8" fill="url(#node)"/>
+    <circle cx="784" cy="104" r="8" fill="url(#node)"/>
+    <circle cx="914" cy="34" r="8" fill="url(#node)"/>
+  </g>
+  <g fill="#8EA2BE" opacity=".18">
+    <rect x="18" y="214" width="220" height="1"/>
+    <rect x="370" y="214" width="220" height="1"/>
+    <rect x="722" y="214" width="220" height="1"/>
+  </g>
+</svg>
