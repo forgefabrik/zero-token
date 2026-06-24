@@ -34,7 +34,6 @@ function lastUserPrompt(request: ChatCompletionRequest): string {
 
 export class ClaudeOpenClawProvider implements InferenceProvider {
   readonly provider = "claude";
-  private readonly deviceId = randomUUID();
 
   constructor(private accountId = "") {}
 
@@ -67,6 +66,23 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
         await page.goto("https://claude.ai/new", { waitUntil: "domcontentloaded", timeout: 30_000 });
       }
 
+      const browserCookies = await page.context().cookies(["https://claude.ai/"]);
+      const deviceId = browserCookies.find(
+        (cookie) => cookie.name === "anthropic-device-id",
+      )?.value;
+      if (!deviceId) {
+        throw new InferenceError(
+          "Claude-Browserprofil enthält keine persistente Geräte-ID. Bitte Claude erneut im isolierten Browserprofil anmelden.",
+          403,
+          "claude",
+        );
+      }
+
+      logger.info(
+        { provider: "claude", accountId: account.id, deviceIdSource: "browser-cookie" },
+        "Claude-Requestidentität aus persistentem Browserprofil geladen",
+      );
+
       const orgStarted = performance.now();
       const orgResult = await page.evaluate(async ({ deviceId }): Promise<BrowserResult> => {
         const response = await fetch("https://claude.ai/api/organizations", {
@@ -79,7 +95,7 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
           },
         });
         return { status: response.status, body: await response.text() };
-      }, { deviceId: this.deviceId });
+      }, { deviceId });
 
       logger.info({
         provider: "claude",
@@ -117,7 +133,7 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
           },
         );
         return { status: response.status, body: await response.text() };
-      }, { organizationId, requestedUuid, deviceId: this.deviceId });
+      }, { organizationId, requestedUuid, deviceId });
 
       logger.info({
         provider: "claude",
@@ -177,7 +193,7 @@ export class ClaudeOpenClawProvider implements InferenceProvider {
         } finally {
           clearTimeout(timeout);
         }
-      }, { organizationId, conversationId, model: request.model, prompt, deviceId: this.deviceId });
+      }, { organizationId, conversationId, model: request.model, prompt, deviceId });
 
       logger.info({
         provider: "claude",
