@@ -1,4 +1,5 @@
 import App from "./App.svelte";
+import "./responsive.css";
 import { mount } from "svelte";
 import { installRemoteLoginInterceptor } from "./lib/remote-login-interceptor";
 
