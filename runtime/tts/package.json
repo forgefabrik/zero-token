@@ -1,0 +1,10 @@
+{
+  "name": "zero-token-tts-runtime",
+  "version": "1.5.1",
+  "private": true,
+  "description": "Local Piper runtime for Zero-Token TTS",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
