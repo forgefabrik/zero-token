@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "runtimeVersion": "1.5.1",
+  "releaseTag": "tts-runtime-v1.5.1",
+  "sourceRepository": "forgefabrik/zero-token",
+  "supportedTargets": ["linux-x64", "linux-arm64"]
+}
