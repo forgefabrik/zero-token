@@ -3,5 +3,19 @@
   "runtimeVersion": "1.5.1",
   "releaseTag": "tts-runtime-v1.5.1",
   "sourceRepository": "forgefabrik/zero-token",
-  "supportedTargets": ["linux-x64", "linux-arm64"]
+  "checksumAsset": "SHA256SUMS",
+  "targets": {
+    "linux-x64": {
+      "label": "Linux x86_64",
+      "archive": "zero-token-tts-runtime-linux-x64-v1.5.1.tar.gz",
+      "distributions": ["ubuntu", "debian", "fedora", "rhel", "arch", "manjaro", "other"]
+    },
+    "linux-arm64": {
+      "label": "Linux ARM64 / aarch64",
+      "archive": "zero-token-tts-runtime-linux-arm64-v1.5.1.tar.gz",
+      "distributions": ["ubuntu", "debian", "fedora", "rhel", "arch", "manjaro", "other"]
+    }
+  },
+  "defaultModel": "de_DE-eva_k-x_low",
+  "wasmedgeVersion": "0.14.1"
 }
